@@ -13,7 +13,7 @@ As of July 10, 2026, the production app includes:
 - Customer add/edit/delete flows and field-level audit logging.
 - Upcoming-charge reporting and automated cron processing.
 - US proxy routing for Stripe tokenization and Squire API traffic.
-- Duplicate-charge protection, invalid-amount checks, missing-card checks, and retry cooldowns.
+- Invalid-amount checks, missing-card checks, and retry cooldowns for automated charges.
 - Phone-number formatting as `(555) 123-4567` throughout the UI.
 
 The live payment link created during the current work is:

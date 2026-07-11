@@ -870,18 +870,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
             exit;
         }
 
-        // Duplicate charge protection: prevent same card charged twice within 60 seconds
-        $cardLast4Check = substr($cardNumber, -4);
-        $recentTxns = getTransactions();
-        foreach (array_slice($recentTxns, 0, 10) as $recentTxn) {
-            if (($recentTxn['cardLast4'] ?? '') === $cardLast4Check && 
-                abs(floatval($recentTxn['amount'] ?? 0) - $amount) < 0.01 &&
-                (time() - strtotime($recentTxn['timestamp'] ?? '2000-01-01')) < 60) {
-                echo json_encode(['success' => false, 'error' => 'Duplicate charge blocked - same card was just charged. Wait 60 seconds.']);
-                exit;
-            }
-        }
-
         // Tokenize card server-side
         $tokenResult = tokenizeCard($cardNumber, $expMonth, $expYear, $cvc, $clientAddress ?? '', $clientCity ?? '', $clientState ?? '', $clientZip ?? '', $clientName ?? '');
         if (empty($tokenResult['id'])) {

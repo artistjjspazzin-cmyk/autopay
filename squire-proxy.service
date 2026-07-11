@@ -1,0 +1,14 @@
+[Unit]
+Description=Squire API Proxy (Cloudflare bypass)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /var/www/html/autopay/squire_proxy.py
+WorkingDirectory=/var/www/html/autopay
+Restart=always
+RestartSec=5
+User=www-data
+
+[Install]
+WantedBy=multi-user.target

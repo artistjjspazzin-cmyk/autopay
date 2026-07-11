@@ -1,5 +1,7 @@
 #!/usr/bin/env php
 <?php
+require_once __DIR__ . '/storage.php';
+
 /**
  * Autopay Cron Processor
  * Run daily via cron: * /5 * * * * php /var/www/html/autopay/cron_autopay.php >> /var/log/autopay.log 2>&1
@@ -11,25 +13,17 @@ $SHOP_ID = getenv('SQUIRE_SHOP_ID') ?: '';
 $STRIPE_PK = getenv('STRIPE_PUBLISHABLE_KEY') ?: '';
 $US_PROXY = getenv('US_PROXY_URL') ?: '';
 $SQUIRE_PROXY_URL = getenv('SQUIRE_PROXY_URL') ?: 'http://127.0.0.1:9876';
-$CREDS_FILE = __DIR__ . '/data/squire_creds.json';
-$TOKEN_FILE = __DIR__ . '/data/squire_token.txt';
-$TXN_FILE   = __DIR__ . '/data/transactions.json';
-$AUTOPAY_FILE = __DIR__ . '/data/autopay.json';
 
 $today = date('Y-m-d');
 echo "[" . date('c') . "] Autopay cron started. Today: $today\n";
 
 // ─── Helpers ─────────────────────────────────────────────────
-function loadJson($file) {
-    if (file_exists($file)) { $d = json_decode(file_get_contents($file), true); if (is_array($d)) return $d; }
-    return [];
+function loadJson($documentName) {
+    return storageReadDocument(storageDocumentNameForPath($documentName), []);
 }
 
-function saveJson($file, $data) {
-    $dir = dirname($file);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT), LOCK_EX);
-    chmod($file, 0600);
+function saveJson($documentName, $data) {
+    storageWriteDocument(storageDocumentNameForPath($documentName), $data);
 }
 
 function squireProxyAPI($method, $endpoint, $data = null, $token = null) {
@@ -52,28 +46,18 @@ function squireProxyAPI($method, $endpoint, $data = null, $token = null) {
 }
 
 function getSquireToken() {
-    global $CREDS_FILE, $TOKEN_FILE;
-
-    // First try to refresh token via proxy (bypasses Cloudflare)
-    if (file_exists($CREDS_FILE)) {
-        $creds = json_decode(file_get_contents($CREDS_FILE), true);
-        if ($creds && !empty($creds['username']) && !empty($creds['password'])) {
-            $result = squireProxyAPI('POST', '/v1/login', ['username' => $creds['username'], 'password' => $creds['password']]);
-            if ($result['code'] >= 200 && $result['code'] < 300 && !empty($result['body']['token'])) {
-                file_put_contents($TOKEN_FILE, $result['body']['token'], LOCK_EX);
-                echo "  Token refreshed via proxy\n";
-                return $result['body']['token'];
-            }
+    $creds = storageReadDocument('squire_creds.json', null);
+    if ($creds && !empty($creds['username']) && !empty($creds['password'])) {
+        $result = squireProxyAPI('POST', '/v1/login', ['username' => $creds['username'], 'password' => $creds['password']]);
+        if ($result['code'] >= 200 && $result['code'] < 300 && !empty($result['body']['token'])) {
+            storageWriteText('squire_token.txt', $result['body']['token']);
+            echo "  Token refreshed via proxy\n";
+            return $result['body']['token'];
         }
     }
 
-    // Fallback to saved token
-    if (file_exists($TOKEN_FILE)) {
-        $token = trim(file_get_contents($TOKEN_FILE));
-        if ($token) return $token;
-    }
-
-    return null;
+    $token = storageReadText('squire_token.txt');
+    return $token ?: null;
 }
 
 function chargeViaSquire($stripeToken, $amountCents, $token) {
@@ -134,15 +118,8 @@ function calcNextCharge($currentDate, $frequency) {
     return $dt->format('Y-m-d');
 }
 
-$WEBHOOKS_FILE = __DIR__ . '/data/webhooks.json';
-
 function getWebhooks() {
-    global $WEBHOOKS_FILE;
-    if (file_exists($WEBHOOKS_FILE)) {
-        $data = json_decode(file_get_contents($WEBHOOKS_FILE), true);
-        if (is_array($data)) return $data;
-    }
-    return [];
+    return storageReadDocument('webhooks.json', []);
 }
 
 function fireWebhooks($event, $payload, $source = '') {
@@ -181,8 +158,8 @@ function fireWebhooks($event, $payload, $source = '') {
 }
 
 // ─── Main Processing ────────────────────────────────────────
-$autopays = loadJson($AUTOPAY_FILE);
-$transactions = loadJson($TXN_FILE);
+$autopays = loadJson('autopay.json');
+$transactions = loadJson('transactions.json');
 $token = getSquireToken();
 
 if (!$token) {
@@ -207,8 +184,7 @@ echo "  Due subscriptions: " . count($dueIndexes) . "\n";
 
 if (!empty($dueIndexes)) {
     // Pick the next one to process using a round-robin tracker
-    $trackerFile = __DIR__ . '/data/.cron_last_processed';
-    $lastProcessedId = file_exists($trackerFile) ? trim(file_get_contents($trackerFile)) : '';
+    $lastProcessedId = storageReadText('.cron_last_processed');
 
     // Find the next due sub after the last processed one
     $targetIdx = $dueIndexes[0]; // default to first
@@ -229,8 +205,8 @@ if (!empty($dueIndexes)) {
     // SKIP: Don't charge if amount is 0 or negative (data issue)
     if ($amount <= 0) {
         echo "  SKIPPED: {$sub['clientName']} - amount is \$0 (needs amount set in dashboard)\n";
-        file_put_contents($trackerFile, $sub['id'], LOCK_EX);
-        saveJson($AUTOPAY_FILE, $autopays);
+        storageWriteText('.cron_last_processed', $sub['id']);
+        saveJson('autopay.json', $autopays);
         $remaining = max(0, count($dueIndexes) - 1);
         echo "[" . date('c') . "] Done. Processed: 0 | Skipped: 1 (no amount) | Remaining: $remaining (next in ~20 min)\n\n";
         exit(0);
@@ -238,7 +214,7 @@ if (!empty($dueIndexes)) {
 
     // SKIP: Don't charge if no card AND no saved card available
     if (empty($sub['encryptedCard']) && empty($sub['stripeToken'])) {
-        $savedCards = loadJson(__DIR__ . '/data/saved_cards.json');
+        $savedCards = loadJson('saved_cards.json');
         $foundCard = false;
         foreach ($savedCards as $sc) {
             if (strtolower(trim($sc['clientEmail'] ?? '')) === strtolower(trim($sub['clientEmail'] ?? '')) && !empty($sc['encryptedCard'])) {
@@ -251,8 +227,8 @@ if (!empty($dueIndexes)) {
         }
         if (!$foundCard) {
             echo "  SKIPPED: {$sub['clientName']} - no card on file\n";
-            file_put_contents($trackerFile, $sub['id'], LOCK_EX);
-            saveJson($AUTOPAY_FILE, $autopays);
+            storageWriteText('.cron_last_processed', $sub['id']);
+            saveJson('autopay.json', $autopays);
             $remaining = max(0, count($dueIndexes) - 1);
             echo "[" . date('c') . "] Done. Processed: 0 | Skipped: 1 (no card) | Remaining: $remaining (next in ~20 min)\n\n";
             exit(0);
@@ -268,8 +244,8 @@ if (!empty($dueIndexes)) {
             $elapsed = time() - $lastTime;
             if ($elapsed < 600 && ($lastAttempt['status'] ?? '') === 'declined') {
                 echo "  COOLDOWN: {$sub['clientName']} - last decline {$elapsed}s ago (need 600s)\n";
-                file_put_contents($trackerFile, $sub['id'], LOCK_EX);
-                saveJson($AUTOPAY_FILE, $autopays);
+                storageWriteText('.cron_last_processed', $sub['id']);
+                saveJson('autopay.json', $autopays);
                 $remaining = max(0, count($dueIndexes) - 1);
                 echo "[" . date('c') . "] Done. Processed: 0 | Cooldown: 1 | Remaining: $remaining (next in ~20 min)\n\n";
                 exit(0);
@@ -281,7 +257,7 @@ if (!empty($dueIndexes)) {
 
     // If subscription is missing card info, try to fill from saved_cards
     if (empty($sub['cardLast4'])) {
-        $savedCards = loadJson(__DIR__ . '/data/saved_cards.json');
+        $savedCards = loadJson('saved_cards.json');
         foreach ($savedCards as $sc) {
             if (strtolower(trim($sc['clientEmail'] ?? '')) === strtolower(trim($sub['clientEmail'] ?? '')) && !empty($sc['cardLast4'])) {
                 $sub['cardLast4'] = $sc['cardLast4'];
@@ -296,7 +272,7 @@ if (!empty($dueIndexes)) {
 
     // If subscription is missing card info, try to fill from saved_cards
     if (empty($sub['cardLast4'])) {
-        $savedCards = loadJson(__DIR__ . '/data/saved_cards.json');
+        $savedCards = loadJson('saved_cards.json');
         foreach ($savedCards as $sc) {
             if (strtolower(trim($sc['clientEmail'] ?? '')) === strtolower(trim($sub['clientEmail'] ?? '')) && !empty($sc['cardLast4'])) {
                 $sub['cardLast4'] = $sc['cardLast4'];
@@ -312,7 +288,7 @@ if (!empty($dueIndexes)) {
     echo "  Processing (1 of " . count($dueIndexes) . "): {$sub['clientName']} - \${$amount} ({$sub['frequency']}) [Sub: {$sub['id']}]\n";
 
     // Save tracker so next run picks the next customer
-    file_put_contents($trackerFile, $sub['id'], LOCK_EX);
+    storageWriteText('.cron_last_processed', $sub['id']);
 
     // Decrypt stored card and create a fresh token
     $result = null;
@@ -448,8 +424,8 @@ if (!empty($dueIndexes)) {
 }
 
 // Save everything
-saveJson($AUTOPAY_FILE, $autopays);
-saveJson($TXN_FILE, $transactions);
+saveJson('autopay.json', $autopays);
+saveJson('transactions.json', $transactions);
 
 $remaining = max(0, count($dueIndexes) - 1);
 echo "[" . date('c') . "] Done. Processed: $processed | Succeeded: $succeeded | Failed: $failed | Remaining: $remaining (next in ~20 min)\n\n";

@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/storage.php';
+
 /**
  * Authorize.net Terminal
  * Login-gated, transaction logging, dashboard analytics, autopay/recurring billing
@@ -14,17 +16,7 @@ $SQUIRE_API_BASE = getenv('SQUIRE_API_BASE') ?: 'https://api.getsquire.com';
 $SHOP_ID = getenv('SQUIRE_SHOP_ID') ?: '';
 $STRIPE_PK = getenv('STRIPE_PUBLISHABLE_KEY') ?: '';
 $US_PROXY = getenv('US_PROXY_URL') ?: '';
-$STRIPE_SK = getenv('STRIPE_SECRET_KEY') ?: (file_exists(__DIR__ . '/data/stripe_sk.txt') ? trim(file_get_contents(__DIR__ . '/data/stripe_sk.txt')) : '');
-$CREDS_FILE = __DIR__ . '/data/squire_creds.json';
-$TOKEN_FILE = __DIR__ . '/data/squire_token.txt';
-$TXN_FILE   = __DIR__ . '/data/transactions.json';
-$AUTOPAY_FILE = __DIR__ . '/data/autopay.json';
-$SAVED_CARDS_FILE = __DIR__ . '/data/saved_cards.json';
-$DEPOSITS_FILE = __DIR__ . '/data/deposits.json';
-$DISPUTES_FILE = __DIR__ . '/data/disputes.json';
-$SESSIONS_FILE = __DIR__ . '/data/sessions.json';
-$AUDIT_FILE = __DIR__ . '/data/audit_log.json';
-$LINKS_FILE = __DIR__ . '/data/payment_links.json';
+$STRIPE_SK = getenv('STRIPE_SECRET_KEY') ?: storageReadText('stripe_sk.txt');
 
 $ADMIN_USER = getenv('ADMIN_USER') ?: 'admin';
 $ADMIN_PASS = getenv('ADMIN_PASSWORD') ?: '';
@@ -174,9 +166,9 @@ if (isset($_GET['pay'])) {
                     'description' => $link['description'] ?? 'Monthly Subscription',
                     'createdAt' => date('c'), 'source' => $link['source'] ?? 'link',
                 ];
-                $autopays = json_decode(file_get_contents($AUTOPAY_FILE), true) ?: [];
+                $autopays = getAutopays();
                 $autopays[] = $sub;
-                file_put_contents($AUTOPAY_FILE, json_encode($autopays, JSON_PRETTY_PRINT), LOCK_EX);
+                saveAutopays($autopays);
             }
 
             // Payment links stay active and reusable — never marked used/expired.
@@ -371,20 +363,11 @@ if ($isAdminAuth) {
 
 // ─── Session Tracking Helpers ─────────────────────────────────
 function getActiveSessions() {
-    global $SESSIONS_FILE;
-    if (file_exists($SESSIONS_FILE)) {
-        $data = json_decode(file_get_contents($SESSIONS_FILE), true);
-        if (is_array($data)) return $data;
-    }
-    return [];
+    return storageReadDocument('sessions.json', []);
 }
 
 function saveSessions($sessions) {
-    global $SESSIONS_FILE;
-    $dir = dirname($SESSIONS_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($SESSIONS_FILE, json_encode($sessions, JSON_PRETTY_PRINT), LOCK_EX);
-    chmod($SESSIONS_FILE, 0600);
+    storageWriteDocument('sessions.json', $sessions);
 }
 
 function getClientIP() {
@@ -485,125 +468,76 @@ function isSessionKicked() {
 
 // ─── Helpers ─────────────────────────────────────────────────
 function getSavedCreds() {
-    global $CREDS_FILE;
-    if (file_exists($CREDS_FILE)) {
-        $data = json_decode(file_get_contents($CREDS_FILE), true);
-        if ($data && isset($data['username']) && isset($data['password'])) return $data;
-    }
+    $data = storageReadDocument('squire_creds.json', null);
+    if ($data && isset($data['username']) && isset($data['password'])) return $data;
     return null;
 }
 
 function saveCreds($username, $password) {
-    global $CREDS_FILE;
-    $dir = dirname($CREDS_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($CREDS_FILE, json_encode(['username' => $username, 'password' => $password]), LOCK_EX);
-    chmod($CREDS_FILE, 0600);
+    storageWriteDocument('squire_creds.json', ['username' => $username, 'password' => $password]);
 }
 
 function getToken() {
-    global $TOKEN_FILE;
     if (!empty($_SESSION['squire_token'])) return $_SESSION['squire_token'];
-    if (file_exists($TOKEN_FILE)) {
-        $token = trim(file_get_contents($TOKEN_FILE));
-        if ($token) { $_SESSION['squire_token'] = $token; return $token; }
-    }
+    $token = storageReadText('squire_token.txt');
+    if ($token) { $_SESSION['squire_token'] = $token; return $token; }
     return '';
 }
 
 function saveToken($token) {
-    global $TOKEN_FILE;
-    $dir = dirname($TOKEN_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($TOKEN_FILE, $token, LOCK_EX);
-    chmod($TOKEN_FILE, 0600);
+    storageWriteText('squire_token.txt', $token);
     $_SESSION['squire_token'] = $token;
 }
 
 function getTransactions() {
-    global $TXN_FILE;
-    if (file_exists($TXN_FILE)) {
-        $data = json_decode(file_get_contents($TXN_FILE), true);
-        if (is_array($data)) return $data;
-    }
-    return [];
+    return storageReadDocument('transactions.json', []);
 }
 
 function saveTransaction($txn) {
-    global $TXN_FILE;
-    $dir = dirname($TXN_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    $all = getTransactions();
-    array_unshift($all, $txn);
-    file_put_contents($TXN_FILE, json_encode($all, JSON_PRETTY_PRINT), LOCK_EX);
-    chmod($TXN_FILE, 0600);
+    storageMutateDocument('transactions.json', [], function($all) use ($txn) {
+        array_unshift($all, $txn);
+        return $all;
+    });
 }
 
 function saveTransactions($all) {
-    global $TXN_FILE;
-    $dir = dirname($TXN_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($TXN_FILE, json_encode($all, JSON_PRETTY_PRINT), LOCK_EX);
-    chmod($TXN_FILE, 0600);
+    storageWriteDocument('transactions.json', $all);
 }
 
 function getSavedCards() {
-    global $SAVED_CARDS_FILE;
-    if (file_exists($SAVED_CARDS_FILE)) {
-        $data = json_decode(file_get_contents($SAVED_CARDS_FILE), true);
-        if (is_array($data)) return $data;
-    }
-    return [];
+    return storageReadDocument('saved_cards.json', []);
 }
 
 function saveSavedCards($all) {
-    global $SAVED_CARDS_FILE;
-    $dir = dirname($SAVED_CARDS_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($SAVED_CARDS_FILE, json_encode($all, JSON_PRETTY_PRINT), LOCK_EX);
-    chmod($SAVED_CARDS_FILE, 0600);
+    storageWriteDocument('saved_cards.json', $all);
 }
 
-$AUDIT_FILE = __DIR__ . '/data/audit_log.json';
-$LINKS_FILE = __DIR__ . '/data/payment_links.json';
 $ADMIN_PIN = '8802';
 
 function getPaymentLinks() {
-    global $LINKS_FILE;
-    if (file_exists($LINKS_FILE)) {
-        $data = json_decode(file_get_contents($LINKS_FILE), true);
-        if (is_array($data)) return $data;
-    }
-    return [];
+    return storageReadDocument('payment_links.json', []);
 }
 function savePaymentLinks($all) {
-    global $LINKS_FILE;
-    $dir = dirname($LINKS_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($LINKS_FILE, json_encode($all, JSON_PRETTY_PRINT), LOCK_EX);
-    chmod($LINKS_FILE, 0600);
+    storageWriteDocument('payment_links.json', $all);
 }
 
 function getAuditLog() {
-    global $AUDIT_FILE;
-    if (!file_exists($AUDIT_FILE)) return [];
-    return json_decode(file_get_contents($AUDIT_FILE), true) ?: [];
+    return storageReadDocument('audit_log.json', []);
 }
 function addAuditEntry($action, $target, $details = '') {
-    global $AUDIT_FILE;
-    $log = getAuditLog();
     $ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
     $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
-    array_unshift($log, [
-        'timestamp' => date('c'),
-        'action' => $action,
-        'target' => $target,
-        'details' => $details,
-        'ip' => $ip,
-        'userAgent' => $ua,
-    ]);
-    if (count($log) > 5000) $log = array_slice($log, 0, 5000);
-    file_put_contents($AUDIT_FILE, json_encode($log, JSON_PRETTY_PRINT), LOCK_EX);
+    storageMutateDocument('audit_log.json', [], function($log) use ($action, $target, $details, $ip, $ua) {
+        array_unshift($log, [
+            'timestamp' => date('c'),
+            'action' => $action,
+            'target' => $target,
+            'details' => $details,
+            'ip' => $ip,
+            'userAgent' => $ua,
+        ]);
+        return count($log) > 5000 ? array_slice($log, 0, 5000) : $log;
+    });
 }
 
 function saveCardForCustomer($clientName, $clientEmail, $clientPhone, $clientAddress, $clientCity, $clientState, $clientZip, $cardNumber, $expMonth, $expYear, $cvc, $cardLast4, $cardBrand) {
@@ -640,54 +574,27 @@ function saveCardForCustomer($clientName, $clientEmail, $clientPhone, $clientAdd
 }
 
 function getAutopays() {
-    global $AUTOPAY_FILE;
-    if (file_exists($AUTOPAY_FILE)) {
-        $data = json_decode(file_get_contents($AUTOPAY_FILE), true);
-        if (is_array($data)) return $data;
-    }
-    return [];
+    return storageReadDocument('autopay.json', []);
 }
 
 function saveAutopays($all) {
-    global $AUTOPAY_FILE;
-    $dir = dirname($AUTOPAY_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($AUTOPAY_FILE, json_encode($all, JSON_PRETTY_PRINT), LOCK_EX);
-    chmod($AUTOPAY_FILE, 0600);
+    storageWriteDocument('autopay.json', $all);
 }
 
 function getDeposits() {
-    global $DEPOSITS_FILE;
-    if (file_exists($DEPOSITS_FILE)) {
-        $data = json_decode(file_get_contents($DEPOSITS_FILE), true);
-        if (is_array($data)) return $data;
-    }
-    return [];
+    return storageReadDocument('deposits.json', []);
 }
 
 function saveDeposits($all) {
-    global $DEPOSITS_FILE;
-    $dir = dirname($DEPOSITS_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($DEPOSITS_FILE, json_encode($all, JSON_PRETTY_PRINT), LOCK_EX);
-    chmod($DEPOSITS_FILE, 0600);
+    storageWriteDocument('deposits.json', $all);
 }
 
 function getDisputes() {
-    global $DISPUTES_FILE;
-    if (file_exists($DISPUTES_FILE)) {
-        $data = json_decode(file_get_contents($DISPUTES_FILE), true);
-        if (is_array($data)) return $data;
-    }
-    return [];
+    return storageReadDocument('disputes.json', []);
 }
 
 function saveDisputes($all) {
-    global $DISPUTES_FILE;
-    $dir = dirname($DISPUTES_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($DISPUTES_FILE, json_encode($all, JSON_PRETTY_PRINT), LOCK_EX);
-    chmod($DISPUTES_FILE, 0600);
+    storageWriteDocument('disputes.json', $all);
 }
 
 function squireAPI($method, $endpoint, $data = null, $token = null) {

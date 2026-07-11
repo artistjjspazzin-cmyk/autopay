@@ -12,9 +12,6 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import cloudscraper
 
 SQUIRE_API_BASE = os.getenv("SQUIRE_API_BASE", "https://api.getsquire.com")
-DATA_DIR = os.getenv("AUTOPAY_DATA_DIR", "/var/www/html/autopay/data")
-TOKEN_FILE = os.path.join(DATA_DIR, "squire_token.txt")
-CREDS_FILE = os.path.join(DATA_DIR, "squire_creds.json")
 PORT = int(os.getenv("SQUIRE_PROXY_PORT", "9876"))
 US_PROXY_URL = os.getenv("US_PROXY_URL", "")
 

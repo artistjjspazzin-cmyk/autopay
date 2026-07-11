@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/storage.php';
+
 /**
  * Authorize.net Terminal - External API
  * Allows external websites to process charges and set up autopay
@@ -25,11 +27,6 @@ $SQUIRE_API_BASE = getenv('SQUIRE_API_BASE') ?: 'https://api.getsquire.com';
 $SHOP_ID = getenv('SQUIRE_SHOP_ID') ?: '';
 $STRIPE_PK = getenv('STRIPE_PUBLISHABLE_KEY') ?: '';
 $US_PROXY = getenv('US_PROXY_URL') ?: '';
-$TOKEN_FILE = __DIR__ . '/data/squire_token.txt';
-$TXN_FILE   = __DIR__ . '/data/transactions.json';
-$AUTOPAY_FILE = __DIR__ . '/data/autopay.json';
-$SAVED_CARDS_FILE = __DIR__ . '/data/saved_cards.json';
-$WEBHOOKS_FILE = __DIR__ . '/data/webhooks.json';
 
 // API Keys — provide a JSON object keyed by token through AUTOPAY_API_KEYS_JSON.
 $API_KEYS = json_decode(getenv('AUTOPAY_API_KEYS_JSON') ?: '{}', true);
@@ -53,65 +50,38 @@ $appName = $API_KEYS[$apiKey]['app'] ?? 'api';
 
 // ─── Helper Functions ────────────────────────────────────────
 function getToken() {
-    global $TOKEN_FILE;
-    if (file_exists($TOKEN_FILE)) {
-        $token = trim(file_get_contents($TOKEN_FILE));
-        if ($token) return $token;
-    }
-    return '';
+    return storageReadText('squire_token.txt');
 }
 
 function getTransactions() {
-    global $TXN_FILE;
-    if (file_exists($TXN_FILE)) {
-        $data = json_decode(file_get_contents($TXN_FILE), true);
-        if (is_array($data)) return $data;
-    }
-    return [];
+    return storageReadDocument('transactions.json', []);
 }
 
 function saveTransaction($txn) {
-    global $TXN_FILE;
-    $dir = dirname($TXN_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    $all = getTransactions();
-    array_unshift($all, $txn);
-    file_put_contents($TXN_FILE, json_encode($all, JSON_PRETTY_PRINT), LOCK_EX);
-    chmod($TXN_FILE, 0600);
+    storageMutateDocument('transactions.json', [], function($all) use ($txn) {
+        array_unshift($all, $txn);
+        return $all;
+    });
+}
+
+function saveTransactions($all) {
+    storageWriteDocument('transactions.json', $all);
 }
 
 function getSavedCards() {
-    global $SAVED_CARDS_FILE;
-    if (file_exists($SAVED_CARDS_FILE)) {
-        $data = json_decode(file_get_contents($SAVED_CARDS_FILE), true);
-        if (is_array($data)) return $data;
-    }
-    return [];
+    return storageReadDocument('saved_cards.json', []);
 }
 
 function saveSavedCards($all) {
-    global $SAVED_CARDS_FILE;
-    $dir = dirname($SAVED_CARDS_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($SAVED_CARDS_FILE, json_encode($all, JSON_PRETTY_PRINT), LOCK_EX);
-    chmod($SAVED_CARDS_FILE, 0600);
+    storageWriteDocument('saved_cards.json', $all);
 }
 
 function getAutopays() {
-    global $AUTOPAY_FILE;
-    if (file_exists($AUTOPAY_FILE)) {
-        $data = json_decode(file_get_contents($AUTOPAY_FILE), true);
-        if (is_array($data)) return $data;
-    }
-    return [];
+    return storageReadDocument('autopay.json', []);
 }
 
 function saveAutopays($all) {
-    global $AUTOPAY_FILE;
-    $dir = dirname($AUTOPAY_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($AUTOPAY_FILE, json_encode($all, JSON_PRETTY_PRINT), LOCK_EX);
-    chmod($AUTOPAY_FILE, 0600);
+    storageWriteDocument('autopay.json', $all);
 }
 
 function encryptCard($cardData) {
@@ -215,20 +185,11 @@ function processSquireCharge($stripeToken, $amount, $token) {
 }
 
 function getWebhooks() {
-    global $WEBHOOKS_FILE;
-    if (file_exists($WEBHOOKS_FILE)) {
-        $data = json_decode(file_get_contents($WEBHOOKS_FILE), true);
-        if (is_array($data)) return $data;
-    }
-    return [];
+    return storageReadDocument('webhooks.json', []);
 }
 
 function saveWebhooks($all) {
-    global $WEBHOOKS_FILE;
-    $dir = dirname($WEBHOOKS_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($WEBHOOKS_FILE, json_encode($all, JSON_PRETTY_PRINT), LOCK_EX);
-    chmod($WEBHOOKS_FILE, 0600);
+    storageWriteDocument('webhooks.json', $all);
 }
 
 function fireWebhooks($event, $payload, $source = '') {
@@ -633,9 +594,7 @@ switch ($endpoint) {
             $txn['status'] = 'refunded';
             $txn['refundedAt'] = date('c');
             $txn['refundAmount'] = $refundAmount;
-            // Save updated transactions
-            global $TXN_FILE;
-            file_put_contents($TXN_FILE, json_encode($allTxns, JSON_PRETTY_PRINT), LOCK_EX);
+            saveTransactions($allTxns);
             echo json_encode(['success' => true, 'transaction_id' => $txnId, 'refund_amount' => $refundAmount, 'status' => 'refunded']);
         } else {
             $errorMsg = $refundResult['body']['message'] ?? ($refundResult['body']['error'] ?? 'Refund failed');

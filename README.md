@@ -41,7 +41,7 @@ The migration records a canonical SHA-256 hash and item count for every imported
 
 ## Important accounting context
 
-Historical transaction data was partially lost before this repository was created. Some restored approved transactions have `$0` amounts, so raw transaction totals do not represent all historical processing.
+Historical transaction data was partially lost before this repository was created. The restored zero-dollar transaction records were removed from the live database on July 12, 2026 after a protected full database backup and separate export. Current transaction totals still do not represent all historical processing because the lost historical amounts cannot be reconstructed.
 
 The dashboard currently handles that gap as follows:
 

@@ -682,6 +682,17 @@ function formatPhone($phone) {
     return $phone;
 }
 
+function getTransactionType($transaction) {
+    $source = strtolower(trim((string)($transaction['source'] ?? '')));
+    return !empty($transaction['subscriptionId']) || $source === 'autopay'
+        ? 'auto'
+        : 'manual';
+}
+
+function getTransactionTypeLabel($transaction) {
+    return getTransactionType($transaction) === 'auto' ? 'Auto' : 'Manual';
+}
+
 function calcNextCharge($currentDate, $frequency) {
     $dt = new DateTime($currentDate);
     switch ($frequency) {
@@ -1706,7 +1717,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'export_csv' && $isAdminAuth) 
         header('Content-Type: text/csv');
         header('Content-Disposition: attachment; filename="transactions_' . date('Y-m-d') . '.csv"');
         $out = fopen('php://output', 'w');
-        fputcsv($out, ['Date', 'Transaction ID', 'Client', 'Phone', 'Email', 'Description', 'Card', 'Amount', 'Source', 'Status']);
+        fputcsv($out, ['Date', 'Transaction ID', 'Client', 'Phone', 'Email', 'Description', 'Card', 'Amount', 'Type', 'Status']);
         $txns = getTransactions();
         usort($txns, function($a, $b) { return strcmp($b['timestamp'] ?? '', $a['timestamp'] ?? ''); });
         foreach ($txns as $t) {
@@ -1719,7 +1730,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'export_csv' && $isAdminAuth) 
                 $t['description'] ?? '',
                 ($t['cardBrand'] ?? '') . ' ****' . ($t['cardLast4'] ?? ''),
                 number_format($t['amount'] ?? 0, 2, '.', ''),
-                $t['source'] ?? 'manual',
+                getTransactionTypeLabel($t),
                 $t['status'] ?? '',
             ]);
         }
@@ -2468,7 +2479,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                 <th style="cursor:pointer;" onclick="sortDashTable(2)">Phone</th>
                                 <th style="cursor:pointer;" onclick="sortDashTable(3)">Email</th>
                                 <th style="cursor:pointer;" onclick="sortDashTable(4)">Amount</th>
-                                <th style="cursor:pointer;" onclick="sortDashTable(5)">Source</th>
+                                <th style="cursor:pointer;" onclick="sortDashTable(5)">Type</th>
                                 <th style="cursor:pointer;" onclick="sortDashTable(6)">Status</th>
                                 <th>Action</th>
                             </tr></thead>
@@ -2487,7 +2498,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                     <td style="font-size:12px;"><?php if (!empty($t['clientPhone'])): ?><a href="tel:<?= htmlspecialchars(preg_replace('/[^0-9+]/', '', $t['clientPhone'])) ?>" style="color:#2563eb; text-decoration:none;"><?= htmlspecialchars(formatPhone($t['clientPhone'])) ?></a><?php endif; ?></td>
                                     <td style="font-size:12px;"><?php if (!empty($t['clientEmail'])): ?><a href="mailto:<?= htmlspecialchars($t['clientEmail']) ?>" style="color:#2563eb; text-decoration:none;"><?= htmlspecialchars($t['clientEmail']) ?></a><?php endif; ?></td>
                                     <td style="color:#1a1a2e; font-weight:600;">$<?= number_format($t['amount'], 2) ?></td>
-                                    <td><?php $src = $t['source'] ?? 'manual'; if ($src === 'autopay'): ?><span class="badge badge-autopay">Autopay</span><?php elseif ($src === 'JJ'): ?><span class="badge" style="background:#7c3aed; color:#fff;">JJ</span><?php else: ?>Manual<?php endif; ?></td>
+                                    <td><?php if (getTransactionType($t) === 'auto'): ?><span class="badge badge-autopay">Auto</span><?php else: ?>Manual<?php endif; ?></td>
                                     <td><span class="badge badge-<?= $t['status'] ?>"><?= ucfirst($t['status']) ?></span></td>
                                     <td><button class="edit-btn" style="font-size:11px; padding:4px 10px;" onclick='openTxnEditModal(<?= $txnJson ?>)'>Edit</button></td>
                                 </tr>
@@ -2713,7 +2724,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
             <div class="toolbar">
                 <input type="text" id="txnSearch" placeholder="Search by client, description, ID..." oninput="filterTxns()">
                 <select id="txnFilter" onchange="filterTxns()"><option value="all">All Status</option><option value="approved">Approved</option><option value="declined">Declined</option><option value="refunded">Refunded</option></select>
-                <select id="txnSourceFilter" onchange="filterTxns()"><option value="all">All Sources</option><option value="manual">Manual</option><option value="autopay">Autopay</option><option value="JJ">JJ</option></select>
+                <select id="txnSourceFilter" onchange="filterTxns()"><option value="all">All Types</option><option value="manual">Manual</option><option value="auto">Auto</option></select>
                 <select id="txnDateFilter" onchange="filterTxns()"><option value="all">All Time</option><option value="today">Today</option><option value="week">This Week</option><option value="month">This Month</option></select>
                 <a href="?action=export_csv&type=transactions" class="btn-primary" style="display:inline-block; font-size:12px; padding:7px 14px; text-decoration:none; white-space:nowrap;">Export CSV</a>
             </div>
@@ -2723,7 +2734,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                 <?php else: ?>
                     <div class="table-wrap">
                         <table id="txnTable">
-                            <thead><tr><th>Date</th><th>ID</th><th>Client</th><th>Phone</th><th>Email</th><th>Address</th><th>Card</th><th>Amount</th><th>Source</th><th>Status</th><th>Action</th></tr></thead>
+                            <thead><tr><th>Date</th><th>ID</th><th>Client</th><th>Phone</th><th>Email</th><th>Address</th><th>Card</th><th>Amount</th><th>Type</th><th>Status</th><th>Action</th></tr></thead>
                             <tbody>
                             <?php foreach ($allTxns as $t):
                                 $txnEditJson = htmlspecialchars(json_encode([
@@ -2733,7 +2744,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                     'cardBrand' => $t['cardBrand'] ?? '', 'cardLast4' => $t['cardLast4'] ?? '',
                                 ]), ENT_QUOTES);
                             ?>
-                                <tr data-status="<?= $t['status'] ?>" data-source="<?= $t['source'] ?? 'manual' ?>" data-date="<?= substr($t['timestamp'] ?? '', 0, 10) ?>" data-search="<?= strtolower(($t['clientName'] ?? '') . ' ' . ($t['description'] ?? '') . ' ' . ($t['id'] ?? '') . ' ' . ($t['clientEmail'] ?? '')) ?>">
+                                <tr data-status="<?= $t['status'] ?>" data-source="<?= getTransactionType($t) ?>" data-date="<?= substr($t['timestamp'] ?? '', 0, 10) ?>" data-search="<?= strtolower(($t['clientName'] ?? '') . ' ' . ($t['description'] ?? '') . ' ' . ($t['id'] ?? '') . ' ' . ($t['clientEmail'] ?? '')) ?>">
                                     <td><?= date('M j, g:ia', strtotime($t['timestamp'] ?? 'now')) ?></td>
                                     <td style="font-family: monospace; font-size: 10px; color: #6b7080;"><?= htmlspecialchars(substr($t['id'] ?? '', 0, 14)) ?></td>
                                     <td style="color:#1a1a2e; font-weight:500;"><?= htmlspecialchars($t['clientName'] ?: 'Walk-in') ?></td>
@@ -2745,7 +2756,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                     ?></td>
                                     <td style="font-size: 11px;"><?= !empty($t['cardLast4']) ? htmlspecialchars(($t['cardBrand'] ?? 'Card') . ' ****' . $t['cardLast4']) : '<span style="color:#9ca3af;">No card</span>' ?></td>
                                     <td style="color:#1a1a2e; font-weight:600;">$<?= number_format($t['amount'], 2) ?></td>
-                                    <td><?php $src2 = $t['source'] ?? 'manual'; if ($src2 === 'autopay'): ?><span class="badge badge-autopay">Autopay</span><?php elseif ($src2 === 'JJ'): ?><span class="badge" style="background:#7c3aed; color:#fff;">JJ</span><?php else: ?>Manual<?php endif; ?></td>
+                                    <td><?php if (getTransactionType($t) === 'auto'): ?><span class="badge badge-autopay">Auto</span><?php else: ?>Manual<?php endif; ?></td>
                                     <td><span class="badge badge-<?= $t['status'] ?>"><?= ucfirst($t['status']) ?></span></td>
                                     <td><button class="edit-btn" style="font-size:11px; padding:4px 10px;" onclick='openTxnEditModal(<?= $txnEditJson ?>)'>Edit</button></td>
                                 </tr>
@@ -3431,8 +3442,8 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                         elseif ($t['status'] === 'declined') { $logIcon = '&#10007;'; $logColor = '#dc2626'; $logLabel = 'DECLINED'; }
                         elseif ($t['status'] === 'refunded') { $logIcon = '&#8634;'; $logColor = '#d97706'; $logLabel = 'REFUNDED'; }
                         else { $logLabel = strtoupper($t['status'] ?? 'UNKNOWN'); }
-                        $logSrc = $t['source'] ?? 'manual';
-                        $logSource = $logSrc === 'autopay' ? 'Autopay' : ($logSrc === 'JJ' ? 'JJ' : 'Manual');
+                        $logType = getTransactionType($t);
+                        $logTypeLabel = getTransactionTypeLabel($t);
                         ?>
                         <div style="display:flex; align-items:flex-start; gap:12px; padding:12px 0; border-bottom:1px solid #f3f4f6;">
                             <div style="font-size:16px; color:<?= $logColor ?>; min-width:22px; text-align:center; margin-top:2px;"><?= $logIcon ?></div>
@@ -3441,7 +3452,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                     <span style="font-size:13px; font-weight:700; color:<?= $logColor ?>;"><?= $logLabel ?></span>
                                     <span style="font-size:13px; font-weight:600; color:#1a1a2e;"><?= htmlspecialchars($t['clientName'] ?: 'Walk-in') ?></span>
                                     <span style="font-size:13px; font-weight:700; color:#1a1a2e;">$<?= number_format($t['amount'], 2) ?></span>
-                                    <?php if ($logSrc === 'JJ'): ?><span class="badge" style="background:#7c3aed; color:#fff; font-size:10px; padding:2px 8px;"><?= $logSource ?></span><?php elseif ($logSrc === 'autopay'): ?><span class="badge badge-autopay" style="font-size:10px; padding:2px 8px;"><?= $logSource ?></span><?php else: ?><span class="badge badge-approved" style="font-size:10px; padding:2px 8px;"><?= $logSource ?></span><?php endif; ?>
+                                    <?php if ($logType === 'auto'): ?><span class="badge badge-autopay" style="font-size:10px; padding:2px 8px;"><?= $logTypeLabel ?></span><?php else: ?><span class="badge badge-approved" style="font-size:10px; padding:2px 8px;"><?= $logTypeLabel ?></span><?php endif; ?>
                                 </div>
                                 <div style="font-size:12px; color:#9ca3af; margin-top:3px;">
                                     <?= date('M j, Y g:ia', strtotime($t['timestamp'] ?? 'now')) ?>
@@ -3766,80 +3777,6 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
 </div>
 
 <script>
-// ─── Address Autocomplete (Nominatim/OpenStreetMap) ──────────
-function setupAddressAutocomplete(addressInputId, cityInputId, stateInputId, zipInputId) {
-    const addrInput = document.getElementById(addressInputId);
-    if (!addrInput) return;
-    let acTimer = null;
-    let acDropdown = null;
-
-    // Create dropdown
-    acDropdown = document.createElement('div');
-    acDropdown.className = 'addr-ac-dropdown';
-    acDropdown.style.cssText = 'display:none; position:absolute; left:0; right:0; top:100%; background:#fff; border:1px solid #d1d5db; border-top:0; border-radius:0 0 8px 8px; box-shadow:0 4px 12px rgba(0,0,0,.12); z-index:9999; max-height:220px; overflow-y:auto;';
-    addrInput.parentElement.style.position = 'relative';
-    addrInput.parentElement.appendChild(acDropdown);
-
-    addrInput.addEventListener('input', function() {
-        clearTimeout(acTimer);
-        const q = addrInput.value.trim();
-        if (q.length < 4) { acDropdown.style.display = 'none'; return; }
-        acTimer = setTimeout(() => {
-            fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=us&limit=5&q=' + encodeURIComponent(q), {headers:{'Accept':'application/json'}})
-                .then(r => r.json()).then(results => {
-                    if (!results.length) { acDropdown.style.display = 'none'; return; }
-                    acDropdown.innerHTML = '';
-                    results.forEach(r => {
-                        const addr = r.address || {};
-                        const houseNum = addr.house_number || '';
-                        const road = addr.road || '';
-                        const street = (houseNum + ' ' + road).trim();
-                        const city = addr.city || addr.town || addr.village || addr.hamlet || '';
-                        const state = addr.state || '';
-                        const zip = addr.postcode || '';
-                        // Convert state name to abbreviation
-                        const stateAbbr = stateToAbbr(state);
-                        const displayText = street + (city ? ', ' + city : '') + (stateAbbr ? ', ' + stateAbbr : '') + (zip ? ' ' + zip : '');
-
-                        const opt = document.createElement('div');
-                        opt.style.cssText = 'padding:10px 14px; font-size:13px; color:#1e293b; cursor:pointer; border-bottom:1px solid #f1f5f9; font-family:inherit;';
-                        opt.textContent = displayText;
-                        opt.onmouseover = () => opt.style.background = '#f0f9ff';
-                        opt.onmouseout = () => opt.style.background = '#fff';
-                        opt.onclick = () => {
-                            addrInput.value = street;
-                            if (cityInputId) document.getElementById(cityInputId).value = city;
-                            if (stateInputId) document.getElementById(stateInputId).value = stateAbbr || state;
-                            if (zipInputId) document.getElementById(zipInputId).value = zip;
-                            acDropdown.style.display = 'none';
-                        };
-                        acDropdown.appendChild(opt);
-                    });
-                    acDropdown.style.display = 'block';
-                }).catch(() => { acDropdown.style.display = 'none'; });
-        }, 350);
-    });
-
-    // Close on click outside
-    document.addEventListener('click', function(e) {
-        if (!addrInput.contains(e.target) && !acDropdown.contains(e.target)) acDropdown.style.display = 'none';
-    });
-}
-
-// US state name to abbreviation
-function stateToAbbr(name) {
-    const map = {'Alabama':'AL','Alaska':'AK','Arizona':'AZ','Arkansas':'AR','California':'CA','Colorado':'CO','Connecticut':'CT','Delaware':'DE','Florida':'FL','Georgia':'GA','Hawaii':'HI','Idaho':'ID','Illinois':'IL','Indiana':'IN','Iowa':'IA','Kansas':'KS','Kentucky':'KY','Louisiana':'LA','Maine':'ME','Maryland':'MD','Massachusetts':'MA','Michigan':'MI','Minnesota':'MN','Mississippi':'MS','Missouri':'MO','Montana':'MT','Nebraska':'NE','Nevada':'NV','New Hampshire':'NH','New Jersey':'NJ','New Mexico':'NM','New York':'NY','North Carolina':'NC','North Dakota':'ND','Ohio':'OH','Oklahoma':'OK','Oregon':'OR','Pennsylvania':'PA','Rhode Island':'RI','South Carolina':'SC','South Dakota':'SD','Tennessee':'TN','Texas':'TX','Utah':'UT','Vermont':'VT','Virginia':'VA','Washington':'WA','West Virginia':'WV','Wisconsin':'WI','Wyoming':'WY','District of Columbia':'DC'};
-    if (!name) return '';
-    if (name.length === 2) return name.toUpperCase();
-    return map[name] || name;
-}
-
-// Attach to all address fields
-setupAddressAutocomplete('clientAddress', 'clientCity', 'clientState', 'clientZip');
-setupAddressAutocomplete('apClientAddress', 'apClientCity', 'apClientState', 'apClientZip');
-setupAddressAutocomplete('editCustAddress', 'editCustCity', 'editCustState', 'editCustZip');
-setupAddressAutocomplete('vpClientAddress', 'vpClientCity', 'vpClientState', 'vpClientZip');
-
 // Card number formatting
 document.getElementById('cardNumber').addEventListener('input', function(e) {
     let v = e.target.value.replace(/\D/g, '').substring(0, 16);

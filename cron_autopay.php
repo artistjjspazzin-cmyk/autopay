@@ -326,7 +326,7 @@ if (!empty($dueIndexes)) {
         if ($sub['failCount'] >= 3) { $sub['status'] = 'failed'; echo "    Subscription marked as FAILED after {$sub['failCount']} attempts\n"; }
         else { $sub['nextCharge'] = date('Y-m-d', strtotime('+1 day')); echo "    Will retry tomorrow (attempt {$sub['failCount']}/3)\n"; }
         $failed = 1;
-        $transactions[] = ['id' => uniqid('txn_'), 'amount' => $amount, 'description' => $sub['description'] ?? 'Autopay', 'clientName' => $sub['clientName'], 'clientEmail' => $sub['clientEmail'] ?? '', 'clientPhone' => $sub['clientPhone'] ?? '', 'status' => 'declined', 'timestamp' => date('c'), 'cardLast4' => $sub['cardLast4'] ?? '****', 'cardBrand' => $sub['cardBrand'] ?? 'Card', 'source' => $sub['source'] ?? 'autopay', 'subscriptionId' => $sub['id'], 'error' => 'No payment method available'];
+        $transactions[] = ['id' => uniqid('txn_'), 'amount' => $amount, 'description' => $sub['description'] ?? 'Autopay', 'clientName' => $sub['clientName'], 'clientEmail' => $sub['clientEmail'] ?? '', 'clientPhone' => $sub['clientPhone'] ?? '', 'status' => 'declined', 'timestamp' => date('c'), 'cardLast4' => $sub['cardLast4'] ?? '****', 'cardBrand' => $sub['cardBrand'] ?? 'Card', 'source' => 'autopay', 'subscriptionId' => $sub['id'], 'error' => 'No payment method available'];
 
     } elseif ($result['code'] >= 200 && $result['code'] < 300) {
         echo "    SUCCESS: Charged \${$amount}\n";
@@ -343,7 +343,7 @@ if (!empty($dueIndexes)) {
             'timestamp' => date('c'),
             'cardLast4' => $sub['cardLast4'] ?? '****',
             'cardBrand' => $sub['cardBrand'] ?? 'Card',
-            'source' => $sub['source'] ?? 'autopay',
+            'source' => 'autopay',
             'subscriptionId' => $sub['id'],
             'metadata' => $sub['metadata'] ?? null,
         ];
@@ -400,7 +400,7 @@ if (!empty($dueIndexes)) {
             'timestamp' => date('c'),
             'cardLast4' => $sub['cardLast4'] ?? '****',
             'cardBrand' => $sub['cardBrand'] ?? 'Card',
-            'source' => $sub['source'] ?? 'autopay',
+            'source' => 'autopay',
             'subscriptionId' => $sub['id'],
             'error' => $errorMsg,
             'metadata' => $sub['metadata'] ?? null,

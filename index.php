@@ -512,6 +512,41 @@ function saveSavedCards($all) {
     storageWriteDocument('saved_cards.json', $all);
 }
 
+function normalizeCustomerName($name) {
+    return strtolower(trim((string)$name));
+}
+
+function customerDeletionKey($name) {
+    $normalized = normalizeCustomerName($name);
+    return $normalized === '' ? '' : hash('sha256', $normalized);
+}
+
+function getDeletedCustomerKeys() {
+    $keys = storageReadDocument('deleted_customers.json', []);
+    return array_values(array_unique(array_filter(is_array($keys) ? $keys : [], 'is_string')));
+}
+
+function markCustomerDeleted($name) {
+    $key = customerDeletionKey($name);
+    if ($key === '') return;
+    storageMutateDocument('deleted_customers.json', [], function($keys) use ($key) {
+        $keys = is_array($keys) ? $keys : [];
+        if (!in_array($key, $keys, true)) $keys[] = $key;
+        return array_values($keys);
+    });
+}
+
+function restoreDeletedCustomer($name) {
+    $key = customerDeletionKey($name);
+    if ($key === '' || !storageHasDocument('deleted_customers.json')) return;
+    storageMutateDocument('deleted_customers.json', [], function($keys) use ($key) {
+        $keys = is_array($keys) ? $keys : [];
+        return array_values(array_filter($keys, function($deletedKey) use ($key) {
+            return $deletedKey !== $key;
+        }));
+    });
+}
+
 $ADMIN_PIN = '8802';
 
 function getPaymentLinks() {
@@ -571,6 +606,7 @@ function saveCardForCustomer($clientName, $clientEmail, $clientPhone, $clientAdd
         ];
     }
     saveSavedCards($all);
+    restoreDeletedCustomer($clientName);
 }
 
 function getAutopays() {
@@ -1261,16 +1297,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
         $input = json_decode(file_get_contents('php://input'), true);
         $name = trim($input['name'] ?? '');
         if (!$name) { echo json_encode(['success' => false, 'error' => 'Name required']); exit; }
-        // Remove from saved cards
-        $cards = getSavedCards();
-        $cards = array_values(array_filter($cards, function($c) use ($name) { return strcasecmp(trim($c['clientName'] ?? ''), $name) !== 0; }));
-        saveSavedCards($cards);
-        // Remove autopay subscriptions for this customer
-        $autopays = getAutopays();
-        $autopays = array_values(array_filter($autopays, function($a) use ($name) { return strcasecmp(trim($a['clientName'] ?? ''), $name) !== 0; }));
-        saveAutopays($autopays);
-        addAuditEntry('delete_customer', $name, 'Customer deleted');
-        echo json_encode(['success' => true]);
+        $removedCards = 0;
+        storageMutateDocument('saved_cards.json', [], function($cards) use ($name, &$removedCards) {
+            $cards = is_array($cards) ? $cards : [];
+            $remaining = array_values(array_filter($cards, function($card) use ($name) {
+                return strcasecmp(trim($card['clientName'] ?? ''), $name) !== 0;
+            }));
+            $removedCards = count($cards) - count($remaining);
+            return $remaining;
+        });
+
+        $removedAutopays = 0;
+        storageMutateDocument('autopay.json', [], function($autopays) use ($name, &$removedAutopays) {
+            $autopays = is_array($autopays) ? $autopays : [];
+            $remaining = array_values(array_filter($autopays, function($autopay) use ($name) {
+                return strcasecmp(trim($autopay['clientName'] ?? ''), $name) !== 0;
+            }));
+            $removedAutopays = count($autopays) - count($remaining);
+            return $remaining;
+        });
+
+        markCustomerDeleted($name);
+        addAuditEntry('delete_customer', $name, 'Customer profile removed | Saved cards: ' . $removedCards . ' | Autopays: ' . $removedAutopays . ' | Transaction history preserved');
+        echo json_encode(['success' => true, 'removedCards' => $removedCards, 'removedAutopays' => $removedAutopays]);
         exit;
     }
 
@@ -1307,6 +1356,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
             'createdAt' => date('c'),
         ];
         saveSavedCards($cards);
+        restoreDeletedCustomer($name);
         addAuditEntry('add_customer', $name, 'Customer added | ' . $email . ' | ' . $phone);
         echo json_encode(['success' => true]);
         exit;
@@ -1440,16 +1490,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action'])) {
         $txns = getTransactions();
         $savedCards = getSavedCards();
         $autopays = getAutopays();
+        $deletedCustomerMap = array_fill_keys(getDeletedCustomerKeys(), true);
         $savedMap = [];
         foreach ($savedCards as $sc) {
-            $savedMap[strtolower(trim($sc['clientName'] ?? ''))] = $sc;
+            $key = normalizeCustomerName($sc['clientName'] ?? '');
+            if ($key === '' || isset($deletedCustomerMap[customerDeletionKey($sc['clientName'] ?? '')])) continue;
+            $savedMap[$key] = $sc;
         }
         $custMap = [];
         foreach ($txns as $t) {
             $name = trim($t['clientName'] ?? '');
             if (!$name) continue;
-            $key = strtolower($name);
-            if (isset($custMap[$key])) continue;
+            $key = normalizeCustomerName($name);
+            if (isset($deletedCustomerMap[customerDeletionKey($name)]) || isset($custMap[$key])) continue;
             $sc = $savedMap[$key] ?? null;
             $custMap[$key] = [
                 'clientName' => $name,
@@ -1466,8 +1519,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action'])) {
         }
         // Also add saved card customers not in transactions
         foreach ($savedCards as $sc) {
-            $key = strtolower(trim($sc['clientName'] ?? ''));
-            if (!$key || isset($custMap[$key])) continue;
+            $key = normalizeCustomerName($sc['clientName'] ?? '');
+            if (!$key || isset($deletedCustomerMap[customerDeletionKey($sc['clientName'] ?? '')]) || isset($custMap[$key])) continue;
             $custMap[$key] = [
                 'clientName' => trim($sc['clientName'] ?? ''),
                 'clientEmail' => $sc['clientEmail'] ?? '',
@@ -1486,8 +1539,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action'])) {
             if (($ap['status'] ?? '') === 'cancelled') continue;
             $name = trim($ap['clientName'] ?? '');
             if (!$name) continue;
-            $key = strtolower($name);
-            if (isset($custMap[$key])) continue;
+            $key = normalizeCustomerName($name);
+            if (isset($deletedCustomerMap[customerDeletionKey($name)]) || isset($custMap[$key])) continue;
             $custMap[$key] = [
                 'clientName' => $name,
                 'clientEmail' => $ap['clientEmail'] ?? '',
@@ -1877,6 +1930,7 @@ $allTxns = getTransactions();
 $allAutopays = getAutopays();
 $allDeposits = getDeposits();
 $allDisputes = getDisputes();
+$deletedCustomerMap = array_fill_keys(getDeletedCustomerKeys(), true);
 
 // Sort deposits by date descending
 usort($allDeposits, function($a, $b) { return strcmp($b['date'] ?? '', $a['date'] ?? ''); });
@@ -1913,6 +1967,7 @@ foreach ($allTxns as $t) {
         if ($tMonth === $monthStr) { $monthTotal += $amt; $monthCount++; }
     } else { $declinedCount++; }
     $cName = trim($t['clientName'] ?? '') ?: 'Walk-in';
+    if (isset($deletedCustomerMap[customerDeletionKey($cName)])) continue;
     if (!isset($customers[$cName])) $customers[$cName] = ['name' => $cName, 'email' => '', 'phone' => '', 'address' => '', 'city' => '', 'state' => '', 'zip' => '', 'total' => 0, 'count' => 0, 'lastCharge' => '', 'cardLast4' => '', 'cardBrand' => ''];
     if ($isApproved) { $customers[$cName]['total'] += $amt; $customers[$cName]['count']++; }
     $customers[$cName]['lastCharge'] = $t['timestamp'] ?? '';
@@ -1947,7 +2002,7 @@ $netPending = $historicalBaseline + $newRevenue - $newDeposits - $newFees;
 foreach ($allAutopays as $ap) {
     if (($ap['status'] ?? '') === 'cancelled') continue;
     $apName = trim($ap['clientName'] ?? '');
-    if (!$apName) continue;
+    if (!$apName || isset($deletedCustomerMap[customerDeletionKey($apName)])) continue;
     if (!isset($customers[$apName])) {
         $customers[$apName] = ['name' => $apName, 'email' => $ap['clientEmail'] ?? '', 'phone' => $ap['clientPhone'] ?? '', 'address' => $ap['clientAddress'] ?? '', 'city' => $ap['clientCity'] ?? '', 'state' => $ap['clientState'] ?? '', 'zip' => $ap['clientZip'] ?? '', 'total' => 0, 'count' => 0, 'lastCharge' => '', 'cardLast4' => $ap['cardLast4'] ?? '', 'cardBrand' => $ap['cardBrand'] ?? ''];
     }
@@ -3663,7 +3718,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
             <hr class="modal-divider">
             <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:10px; padding:16px;">
                 <h4 style="font-size:14px; font-weight:700; color:#dc2626; margin-bottom:8px;">Danger Zone</h4>
-                <p style="font-size:11px; color:#6b7280; margin-bottom:10px;">Permanently delete this customer's saved card and autopay subscriptions. Transaction history is preserved.</p>
+                <p style="font-size:11px; color:#6b7280; margin-bottom:10px;">Permanently remove this customer from Customers and autocomplete, including saved cards and autopay subscriptions. Transaction history is preserved.</p>
                 <button class="btn-primary" style="background:#dc2626; font-size:12px;" onclick="promptDeletePin()">Delete Customer</button>
             </div>
         </div>
@@ -4423,7 +4478,7 @@ function filterCusts() {
 }
 
 async function deleteCustomer(name) {
-    if (!confirm('Delete customer "' + name + '"? This removes their saved card and autopay subscriptions. Transaction history is preserved.')) return;
+    if (!confirm('Delete customer "' + name + '"? This fully removes them from Customers and autocomplete, including saved cards and autopay subscriptions. Transaction history is preserved.')) return;
     try {
         const res = await fetch('?action=delete_customer', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
         const data = await res.json();

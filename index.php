@@ -341,6 +341,7 @@ async function submitPay(e){
         btn.disabled=false;btn.textContent="Pay $"+selectedAmount.toFixed(2);
     }
 }
+document.addEventListener("keydown",function(e){if(e.target&&e.target.type==="tel"&&e.key==="Backspace"&&e.target.selectionStart===e.target.selectionEnd){var c=e.target.selectionStart;while(c>0&&/[^0-9]/.test(e.target.value.charAt(c-1)))c--;if(c!==e.target.selectionStart)e.target.setSelectionRange(c,c);}});
 document.addEventListener("input",function(e){if(e.target&&e.target.type==="tel"){var d=e.target.value.replace(/[^0-9]/g,"");if(d.length>10)d=d.substring(0,10);var f="";if(d.length>0)f="("+d.substring(0,3);if(d.length>=3)f+=") ";if(d.length>3)f+=d.substring(3,6);if(d.length>=6)f+="-"+d.substring(6,10);e.target.value=f;}});
 </script></body></html>';
     exit;
@@ -5501,6 +5502,15 @@ function filterLogs() {
 
 </script>
 <script>
+document.addEventListener('keydown', function(e) {
+    if (!e.target || (e.target.type !== 'tel' && e.target.id !== 'editCustPhone' && e.target.id !== 'addCustPhone')) return;
+    if (e.key !== 'Backspace' || e.target.selectionStart !== e.target.selectionEnd) return;
+
+    var caret = e.target.selectionStart;
+    while (caret > 0 && /[^0-9]/.test(e.target.value.charAt(caret - 1))) caret--;
+    if (caret !== e.target.selectionStart) e.target.setSelectionRange(caret, caret);
+});
+
 document.addEventListener('input', function(e) {
     if (e.target && (e.target.type === 'tel' || e.target.id === 'editCustPhone' || e.target.id === 'addCustPhone')) {
         var d = e.target.value.replace(/[^0-9]/g, '');

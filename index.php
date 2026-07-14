@@ -48,49 +48,7 @@ if (isset($_GET['pay'])) {
     $link = null;
     foreach ($links as $l) { if (($l['id'] ?? '') === $linkId) { $link = $l; break; } }
     if (!$link || ($link['status'] ?? '') !== 'active') {
-        echo '<!DOCTYPE html><html><head><title>Payment Link</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f0f2f5;}.card{background:#fff;border-radius:16px;padding:48px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:420px;}h2{color:#e74c3c;margin-bottom:12px;}p{color:#666;}</style></head><body><div class="card"><h2>Link Expired</h2><p>This payment link is no longer active or has already been used.</p></div>
-<!-- Add Customer Modal -->
-<div class="modal-overlay" id="addCustomerModal" onclick="if(event.target===this)closeAddCustomerModal()">
-    <div class="modal-content" style="max-width:500px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h2 style="margin:0; font-size:18px;">Add New Customer</h2>
-            <button onclick="closeAddCustomerModal()" style="background:none; border:none; font-size:22px; cursor:pointer; color:#6b7280;">&times;</button>
-        </div>
-        <div class="form-group" style="margin-bottom:12px;">
-            <label style="font-size:12px; font-weight:600; color:#374151;">Full Name *</label>
-            <input type="text" id="addCustName" placeholder="John Smith" style="width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:13px;">
-        </div>
-        <div class="form-group" style="margin-bottom:12px;">
-            <label style="font-size:12px; font-weight:600; color:#374151;">Email</label>
-            <input type="email" id="addCustEmail" placeholder="john@email.com" style="width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:13px;">
-        </div>
-        <div class="form-group" style="margin-bottom:12px;">
-            <label style="font-size:12px; font-weight:600; color:#374151;">Phone</label>
-            <input type="tel" id="addCustPhone" placeholder="(555) 123-4567" style="width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:13px;">
-        </div>
-        <div class="form-group" style="margin-bottom:12px;">
-            <label style="font-size:12px; font-weight:600; color:#374151;">Address</label>
-            <input type="text" id="addCustAddress" placeholder="123 Main St" style="width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:13px;">
-        </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:12px;">
-            <div>
-                <label style="font-size:12px; font-weight:600; color:#374151;">City</label>
-                <input type="text" id="addCustCity" placeholder="City" style="width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:13px;">
-            </div>
-            <div>
-                <label style="font-size:12px; font-weight:600; color:#374151;">State</label>
-                <input type="text" id="addCustState" placeholder="ST" maxlength="2" style="width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:13px;">
-            </div>
-            <div>
-                <label style="font-size:12px; font-weight:600; color:#374151;">Zip</label>
-                <input type="text" id="addCustZip" placeholder="12345" maxlength="10" style="width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:13px;">
-            </div>
-        </div>
-        <div id="addCustStatus" style="display:none; padding:8px 12px; border-radius:8px; margin-bottom:12px; font-size:12px;"></div>
-        <button class="btn-primary" style="width:100%; padding:10px; font-size:14px; font-weight:600;" onclick="saveNewCustomer()">Save Customer</button>
-    </div>
-</div>
-</body></html>';
+        echo '<!DOCTYPE html><html><head><title>Payment Link</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f0f2f5;}.card{background:#fff;border-radius:16px;padding:48px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:420px;}h2{color:#e74c3c;margin-bottom:12px;}p{color:#666;}</style></head><body><div class="card"><h2>Link Expired</h2><p>This payment link is no longer active or has already been used.</p></div></body></html>';
         exit;
     }
 
@@ -3601,6 +3559,53 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                 <?php endif; ?>
             </div>
         </div>
+
+<!-- Add Customer Modal -->
+<div class="modal-overlay" id="addCustomerModal" onclick="if(event.target===this)closeAddCustomerModal()">
+    <div class="modal" style="max-width:500px;">
+        <div class="modal-header">
+            <h3>Add New Customer</h3>
+            <button class="modal-close" onclick="closeAddCustomerModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>Full Name *</label>
+                <input type="text" id="addCustName" placeholder="John Smith">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="addCustEmail" placeholder="john@email.com">
+                </div>
+                <div class="form-group">
+                    <label>Phone</label>
+                    <input type="tel" id="addCustPhone" placeholder="(555) 123-4567">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Address</label>
+                <input type="text" id="addCustAddress" placeholder="123 Main St">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>City</label>
+                    <input type="text" id="addCustCity" placeholder="City">
+                </div>
+                <div class="form-group">
+                    <label>State</label>
+                    <input type="text" id="addCustState" placeholder="ST" maxlength="2">
+                </div>
+                <div class="form-group">
+                    <label>Zip</label>
+                    <input type="text" id="addCustZip" placeholder="12345" maxlength="10">
+                </div>
+            </div>
+            <div id="addCustStatus" style="display:none; padding:8px 12px; border-radius:8px; margin-bottom:12px; font-size:12px;"></div>
+            <button class="btn-primary" onclick="saveNewCustomer()">Save Customer</button>
+            <button class="btn-secondary" onclick="closeAddCustomerModal()">Cancel</button>
+        </div>
+    </div>
+</div>
 
 <!-- Edit Customer Modal -->
 <div class="modal-overlay" id="editModal">

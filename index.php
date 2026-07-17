@@ -2427,11 +2427,11 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                     <table style="width:100%; border-collapse:collapse; font-size:13px;" id="scheduleTable">
                         <thead>
                             <tr style="background:#f8fafc; border-bottom:2px solid #e2e8f0;">
-                                <th style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px;">Date</th>
-                                <th style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px;">Customer</th>
-                                <th style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px;">Phone</th>
-                                <th style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px;">Email</th>
-                                <th style="padding:10px 16px; text-align:right; font-weight:700; color:#1e293b; font-size:12px;">Amount</th>
+                                <th data-sort-col="0" aria-sort="ascending" onclick="sortScheduleTable(0)" style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px; cursor:pointer; user-select:none;">Date<span class="schedule-sort-indicator"> ▲</span></th>
+                                <th data-sort-col="1" aria-sort="none" onclick="sortScheduleTable(1)" style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px; cursor:pointer; user-select:none;">Customer<span class="schedule-sort-indicator"></span></th>
+                                <th data-sort-col="2" aria-sort="none" onclick="sortScheduleTable(2)" style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px; cursor:pointer; user-select:none;">Phone<span class="schedule-sort-indicator"></span></th>
+                                <th data-sort-col="3" aria-sort="none" onclick="sortScheduleTable(3)" style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px; cursor:pointer; user-select:none;">Email<span class="schedule-sort-indicator"></span></th>
+                                <th data-sort-col="4" aria-sort="none" onclick="sortScheduleTable(4)" style="padding:10px 16px; text-align:right; font-weight:700; color:#1e293b; font-size:12px; cursor:pointer; user-select:none;">Amount<span class="schedule-sort-indicator"></span></th>
                                 <th style="padding:10px 16px; text-align:center; font-weight:700; color:#1e293b; font-size:12px;">Action</th>
                             </tr>
                         </thead>
@@ -2440,7 +2440,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                             $dateLabel = date('m/d', strtotime($day['date']));
                         ?>
                             <?php foreach ($day['customers'] as $i => $ap): ?>
-                            <tr style="border-bottom:1px solid #f1f5f9;" data-sched-date="<?= $day['date'] ?>">
+                            <tr class="schedule-row" style="border-bottom:1px solid #f1f5f9;" data-sched-date="<?= $day['date'] ?>" data-sched-amount="<?= floatval($ap['amount'] ?? 0) ?>">
                                 <td style="padding:9px 16px; color:#475569; white-space:nowrap;"><?= $dateLabel ?></td>
                                 <td style="padding:9px 16px; color:#1e293b; font-weight:500;"><?= htmlspecialchars($ap['clientName'] ?? 'Unknown') ?></td>
                                 <td style="padding:9px 16px; font-size:12px;"><?php $sph = $ap['clientPhone'] ?? ''; echo $sph ? '<a href="tel:' . htmlspecialchars(preg_replace('/[^0-9+]/', '', $sph)) . '" style="color:#2563eb;text-decoration:none;">' . htmlspecialchars(formatPhone($sph)) . '</a>' : ''; ?></td>
@@ -2449,7 +2449,6 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                 <td style="padding:9px 16px; text-align:center;"><button class="edit-btn" style="font-size:11px; padding:4px 10px;" onclick="editScheduleItem('<?= htmlspecialchars($ap['id'] ?? '') ?>', '<?= htmlspecialchars($ap['clientName'] ?? '') ?>', <?= floatval($ap['amount'] ?? 0) ?>, '<?= $day['date'] ?>')">Edit</button></td>
                             </tr>
                             <?php endforeach; ?>
-                            <tr style="border-bottom:2px solid #e2e8f0; height:4px;" data-sched-date="<?= $day['date'] ?>"><td colspan="6"></td></tr>
                         <?php endforeach; ?>
                         </tbody>
                     </table>
@@ -5164,15 +5163,53 @@ async function doRefund(id, amount) {
 function filterSchedule() {
     const from = document.getElementById('schedFrom').value;
     const to = document.getElementById('schedTo').value;
-    document.querySelectorAll('#scheduleTable tbody tr[data-sched-date]').forEach(r => {
+    document.querySelectorAll('#scheduleTable tbody tr.schedule-row').forEach(r => {
         const d = r.dataset.schedDate || '';
-        if (!d) return;
         const ym = d.substring(0, 7);
         let show = true;
         if (from && ym < from) show = false;
         if (to && ym > to) show = false;
         r.style.display = show ? '' : 'none';
     });
+}
+
+var scheduleSortCol = 0;
+var scheduleSortAsc = true;
+function sortScheduleTable(col) {
+    const table = document.getElementById('scheduleTable');
+    if (!table) return;
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr.schedule-row'));
+    if (scheduleSortCol === col) {
+        scheduleSortAsc = !scheduleSortAsc;
+    } else {
+        scheduleSortCol = col;
+        scheduleSortAsc = true;
+    }
+    rows.sort((a, b) => {
+        let va;
+        let vb;
+        if (col === 0) {
+            va = a.dataset.schedDate || '';
+            vb = b.dataset.schedDate || '';
+        } else if (col === 4) {
+            va = parseFloat(a.dataset.schedAmount) || 0;
+            vb = parseFloat(b.dataset.schedAmount) || 0;
+            return scheduleSortAsc ? va - vb : vb - va;
+        } else {
+            va = (a.cells[col]?.textContent || '').trim().toLowerCase();
+            vb = (b.cells[col]?.textContent || '').trim().toLowerCase();
+        }
+        return scheduleSortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+    });
+    rows.forEach(row => tbody.appendChild(row));
+    table.querySelectorAll('th[data-sort-col]').forEach(header => {
+        header.setAttribute('aria-sort', 'none');
+        header.querySelector('.schedule-sort-indicator').textContent = '';
+    });
+    const activeHeader = table.querySelector(`th[data-sort-col="${col}"]`);
+    activeHeader.setAttribute('aria-sort', scheduleSortAsc ? 'ascending' : 'descending');
+    activeHeader.querySelector('.schedule-sort-indicator').textContent = scheduleSortAsc ? ' ▲' : ' ▼';
 }
 
 function editScheduleItem(id, name, amount, date) {

@@ -2474,8 +2474,10 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                 <div class="stat-card green"><div class="stat-label">Total Sales</div><div class="stat-value"><?= $approvedCount ?></div><div class="stat-sub">approved</div></div>
                 <div class="stat-card red"><div class="stat-label">Declined</div><div class="stat-value"><?= $declinedCount ?></div><div class="stat-sub">failed</div></div>
                 <div class="stat-card blue"><div class="stat-label">Customers</div><div class="stat-value"><?= count($customers) ?></div><div class="stat-sub">unique</div></div>
-                <div class="stat-card purple"><div class="stat-label">Total Autopay</div><div class="stat-value"><?= $activeAP + $pausedAP + $failedAP ?></div><div class="stat-sub"><?= $activeAP ?> active · <?= $pausedAP ?> paused · <?= $failedAP ?> failed</div></div>
-                <div class="stat-card purple"><div class="stat-label">Autopay Revenue</div><div class="stat-value">$<?= number_format($apRevenue, 2) ?></div><div class="stat-sub">collected</div></div>
+                <div class="stat-card purple"><div class="stat-label">Active Autopays</div><div class="stat-value"><?= $activeAP ?></div><div class="stat-sub"><?= $pausedAP ?> paused · <?= $failedAP ?> failed</div></div>
+                <div class="stat-card blue"><div class="stat-label">Monthly Forecast</div><div class="stat-value">$<?= number_format($monthlyForecast, 2) ?></div><div class="stat-sub">active autopays</div></div>
+                <div class="stat-card amber"><div class="stat-label">Next 60 Days</div><div class="stat-value">$<?= number_format($totalScheduled60, 2) ?></div><div class="stat-sub">scheduled</div></div>
+                <div class="stat-card purple"><div class="stat-label">Autopay Collected</div><div class="stat-value">$<?= number_format($apRevenue, 2) ?></div><div class="stat-sub">approved history</div></div>
             </div>
             <div class="card">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">

@@ -2423,15 +2423,17 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
             <?php if (empty($apCalendar)): ?>
                 <div class="empty"><div class="icon">&#128197;</div><p>No upcoming autopay charges scheduled.</p></div>
             <?php else: ?>
-                <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; margin-bottom:18px;">
-                    <table style="width:100%; border-collapse:collapse; font-size:13px;" id="scheduleTable">
+                <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; overflow-x:auto; margin-bottom:18px;">
+                    <table style="width:100%; min-width:1450px; border-collapse:collapse; font-size:13px;" id="scheduleTable">
                         <thead>
                             <tr style="background:#f8fafc; border-bottom:2px solid #e2e8f0;">
                                 <th data-sort-col="0" aria-sort="ascending" onclick="sortScheduleTable(0)" style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px; cursor:pointer; user-select:none;">Date<span class="schedule-sort-indicator"> ▲</span></th>
                                 <th data-sort-col="1" aria-sort="none" onclick="sortScheduleTable(1)" style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px; cursor:pointer; user-select:none;">Customer<span class="schedule-sort-indicator"></span></th>
                                 <th data-sort-col="2" aria-sort="none" onclick="sortScheduleTable(2)" style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px; cursor:pointer; user-select:none;">Phone<span class="schedule-sort-indicator"></span></th>
                                 <th data-sort-col="3" aria-sort="none" onclick="sortScheduleTable(3)" style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px; cursor:pointer; user-select:none;">Email<span class="schedule-sort-indicator"></span></th>
-                                <th data-sort-col="4" aria-sort="none" onclick="sortScheduleTable(4)" style="padding:10px 16px; text-align:right; font-weight:700; color:#1e293b; font-size:12px; cursor:pointer; user-select:none;">Amount<span class="schedule-sort-indicator"></span></th>
+                                <th data-sort-col="4" aria-sort="none" onclick="sortScheduleTable(4)" style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px; cursor:pointer; user-select:none;">Address<span class="schedule-sort-indicator"></span></th>
+                                <th data-sort-col="5" aria-sort="none" onclick="sortScheduleTable(5)" style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px; cursor:pointer; user-select:none;">Card Last 4<span class="schedule-sort-indicator"></span></th>
+                                <th data-sort-col="6" aria-sort="none" onclick="sortScheduleTable(6)" style="padding:10px 16px; text-align:right; font-weight:700; color:#1e293b; font-size:12px; cursor:pointer; user-select:none;">Amount<span class="schedule-sort-indicator"></span></th>
                                 <th style="padding:10px 16px; text-align:center; font-weight:700; color:#1e293b; font-size:12px;">Action</th>
                             </tr>
                         </thead>
@@ -2445,6 +2447,19 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                 <td style="padding:9px 16px; color:#1e293b; font-weight:500;"><?= htmlspecialchars($ap['clientName'] ?? 'Unknown') ?></td>
                                 <td style="padding:9px 16px; font-size:12px;"><?php $sph = $ap['clientPhone'] ?? ''; echo $sph ? '<a href="tel:' . htmlspecialchars(preg_replace('/[^0-9+]/', '', $sph)) . '" style="color:#2563eb;text-decoration:none;">' . htmlspecialchars(formatPhone($sph)) . '</a>' : ''; ?></td>
                                 <td style="padding:9px 16px; font-size:12px;"><?php $sem = $ap['clientEmail'] ?? ''; echo $sem ? '<a href="mailto:' . htmlspecialchars($sem) . '" style="color:#2563eb;text-decoration:none;">' . htmlspecialchars($sem) . '</a>' : ''; ?></td>
+                                <td style="padding:9px 16px; font-size:12px; color:#475569;"><?php
+                                    $street = trim((string)($ap['clientAddress'] ?? ''));
+                                    $city = trim((string)($ap['clientCity'] ?? ''));
+                                    $stateZip = trim(trim((string)($ap['clientState'] ?? '')) . ' ' . trim((string)($ap['clientZip'] ?? '')));
+                                    $locality = implode(', ', array_filter([$city, $stateZip]));
+                                    $address = implode(', ', array_filter([$street, $locality]));
+                                    echo $address !== '' ? htmlspecialchars($address) : '<span style="color:#dc2626;font-weight:600;">Missing</span>';
+                                ?></td>
+                                <td style="padding:9px 16px; font-size:12px; color:#475569; white-space:nowrap;"><?php
+                                    $last4 = substr(preg_replace('/[^0-9]/', '', (string)($ap['cardLast4'] ?? '')), -4);
+                                    $brand = trim((string)($ap['cardBrand'] ?? '')) ?: 'Card';
+                                    echo strlen($last4) === 4 ? htmlspecialchars($brand . ' ****' . $last4) : '<span style="color:#dc2626;font-weight:600;">Missing</span>';
+                                ?></td>
                                 <td style="padding:9px 16px; color:#1e293b; font-weight:600; text-align:right;">$<?= number_format($ap['amount'] ?? 0, 2) ?></td>
                                 <td style="padding:9px 16px; text-align:center;"><button class="edit-btn" style="font-size:11px; padding:4px 10px;" onclick="editScheduleItem('<?= htmlspecialchars($ap['id'] ?? '') ?>', '<?= htmlspecialchars($ap['clientName'] ?? '') ?>', <?= floatval($ap['amount'] ?? 0) ?>, '<?= $day['date'] ?>')">Edit</button></td>
                             </tr>
@@ -5192,7 +5207,7 @@ function sortScheduleTable(col) {
         if (col === 0) {
             va = a.dataset.schedDate || '';
             vb = b.dataset.schedDate || '';
-        } else if (col === 4) {
+        } else if (col === 6) {
             va = parseFloat(a.dataset.schedAmount) || 0;
             vb = parseFloat(b.dataset.schedAmount) || 0;
             return scheduleSortAsc ? va - vb : vb - va;

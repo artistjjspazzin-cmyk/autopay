@@ -2551,8 +2551,10 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                 <?php
                 // Get all active autopay subs sorted by nextCharge date
                 $upcomingSubs = [];
-                foreach ($autopays as $ap) {
-                    if ($ap['status'] === 'active' && !empty($ap['nextCharge'])) {
+                foreach ($allAutopays as $ap) {
+                    $nextCharge = trim((string)($ap['nextCharge'] ?? $ap['nextChargeDate'] ?? ''));
+                    if (($ap['status'] ?? '') === 'active' && $nextCharge !== '') {
+                        $ap['nextCharge'] = $nextCharge;
                         $upcomingSubs[] = $ap;
                     }
                 }

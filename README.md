@@ -101,6 +101,14 @@ sudo chmod 0640 /etc/autopay/database.env
 
 Other application settings are documented in `.env.example`. The application reads environment variables directly and does not automatically load a project `.env` file.
 
+Transaction/customer edit and dashboard refund actions require `TRANSACTION_ACTION_PIN_HASH`. Generate a password hash without storing the PIN in source:
+
+```bash
+php -r "echo password_hash('replace-with-pin', PASSWORD_DEFAULT), PHP_EOL;"
+```
+
+Store the resulting hash in the protected production configuration. Successful PIN verification authorizes sensitive actions for five minutes; five incorrect attempts lock that browser session for fifteen minutes.
+
 Never commit real passwords, database credentials, API keys, proxy credentials, Squire tokens, saved cards, transaction records, sessions, or webhook secrets.
 
 ## Initial database setup and migration
@@ -200,7 +208,8 @@ The cron processor is intended to run every five minutes:
 7. Real issuer declines still occur. Do not weaken amount, missing-card, or retry-cooldown validation.
 8. Test navigation after UI edits. A PHP fatal error before JavaScript loads can make all dashboard tabs appear blank or unclickable.
 9. Keep POST handlers above the `Unknown action` fallthrough.
-10. Never test cron by running a live due-charge batch unintentionally. Verify reads with `verify_database.php` and use a controlled non-production dataset for charge-path testing.
+10. Keep `TRANSACTION_ACTION_PIN_HASH` outside source control and retain server-side authorization on customer edits, customer deletion, and dashboard refunds.
+11. Never test cron by running a live due-charge batch unintentionally. Verify reads with `verify_database.php` and use a controlled non-production dataset for charge-path testing.
 
 ## Security
 

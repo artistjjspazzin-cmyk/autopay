@@ -506,7 +506,22 @@ function restoreDeletedCustomer($name) {
     });
 }
 
-$ADMIN_PIN = '8802';
+function transactionActionPinHash() {
+    storageLoadConfig();
+    $hash = getenv('TRANSACTION_ACTION_PIN_HASH');
+    return is_string($hash) ? trim($hash) : '';
+}
+
+function isTransactionActionPinAuthorized() {
+    return (int)($_SESSION['transaction_action_pin_verified_until'] ?? 0) >= time();
+}
+
+function requireTransactionActionPinAuthorization() {
+    if (isTransactionActionPinAuthorized()) return;
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => 'Security PIN verification required']);
+    exit;
+}
 
 function getPaymentLinks() {
     return storageReadDocument('payment_links.json', []);
@@ -1076,6 +1091,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     // ─── Refund transaction ───
     if ($_GET['action'] === 'refund') {
         $input = json_decode(file_get_contents('php://input'), true);
+        requireTransactionActionPinAuthorization();
         $txnId = $input['id'] ?? '';
         $refundType = $input['refundType'] ?? 'full'; // 'full' or 'custom'
         $customAmount = floatval($input['customAmount'] ?? 0);
@@ -1172,16 +1188,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
 
     // ─── Verify PIN ──────────────────────────────────────
     if ($_GET['action'] === 'verify_pin') {
-        global $ADMIN_PIN;
         $input = json_decode(file_get_contents('php://input'), true);
-        $pin = $input['pin'] ?? '';
-        echo json_encode(['success' => $pin === $ADMIN_PIN]);
+        $hash = transactionActionPinHash();
+        if ($hash === '') {
+            http_response_code(503);
+            echo json_encode(['success' => false, 'error' => 'Security PIN is not configured']);
+            exit;
+        }
+
+        $now = time();
+        $lockedUntil = (int)($_SESSION['transaction_action_pin_locked_until'] ?? 0);
+        if ($lockedUntil > $now) {
+            http_response_code(429);
+            echo json_encode(['success' => false, 'error' => 'Too many incorrect attempts. Try again later.']);
+            exit;
+        }
+
+        $pin = (string)($input['pin'] ?? '');
+        if ($pin !== '' && password_verify($pin, $hash)) {
+            $_SESSION['transaction_action_pin_verified_until'] = $now + 300;
+            unset($_SESSION['transaction_action_pin_failures'], $_SESSION['transaction_action_pin_locked_until']);
+            echo json_encode(['success' => true]);
+            exit;
+        }
+
+        $failures = (int)($_SESSION['transaction_action_pin_failures'] ?? 0) + 1;
+        $_SESSION['transaction_action_pin_failures'] = $failures;
+        if ($failures >= 5) {
+            $_SESSION['transaction_action_pin_locked_until'] = $now + 900;
+            unset($_SESSION['transaction_action_pin_failures']);
+        }
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Incorrect PIN']);
         exit;
     }
 
     // ─── Update Customer Info ──────────────────────────────────
     if ($_GET['action'] === 'update_customer' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $input = json_decode(file_get_contents('php://input'), true);
+        requireTransactionActionPinAuthorization();
         $oldName = trim($input['oldName'] ?? '');
         $newName = trim($input['name'] ?? '');
         $newEmail = trim($input['email'] ?? '');
@@ -1254,6 +1299,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
 
     if ($_GET['action'] === 'delete_customer' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $input = json_decode(file_get_contents('php://input'), true);
+        requireTransactionActionPinAuthorization();
         $name = trim($input['name'] ?? '');
         if (!$name) { echo json_encode(['success' => false, 'error' => 'Name required']); exit; }
         $removedCards = 0;
@@ -2530,7 +2576,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                     <td style="color:#1a1a2e; font-weight:600;">$<?= number_format($t['amount'], 2) ?></td>
                                     <td><?php if (getTransactionType($t) === 'auto'): ?><span class="badge badge-autopay">Auto</span><?php else: ?>Manual<?php endif; ?></td>
                                     <td><span class="badge badge-<?= $t['status'] ?>"><?= ucfirst($t['status']) ?></span></td>
-                                    <td><button class="edit-btn" style="font-size:11px; padding:4px 10px;" onclick='openTxnEditModal(<?= $txnJson ?>)'>Edit</button></td>
+                                    <td><button class="edit-btn" style="font-size:11px; padding:4px 10px;" onclick='promptTxnPin(<?= $txnJson ?>)'>Edit</button></td>
                                 </tr>
                             <?php endforeach; ?>
                             </tbody>
@@ -2790,7 +2836,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                     <td style="color:#1a1a2e; font-weight:600;">$<?= number_format($t['amount'], 2) ?></td>
                                     <td><?php if (getTransactionType($t) === 'auto'): ?><span class="badge badge-autopay">Auto</span><?php else: ?>Manual<?php endif; ?></td>
                                     <td><span class="badge badge-<?= $t['status'] ?>"><?= ucfirst($t['status']) ?></span></td>
-                                    <td><button class="edit-btn" style="font-size:11px; padding:4px 10px;" onclick='openTxnEditModal(<?= $txnEditJson ?>)'>Edit</button></td>
+                                    <td><button class="edit-btn" style="font-size:11px; padding:4px 10px;" onclick='promptTxnPin(<?= $txnEditJson ?>)'>Edit</button></td>
                                 </tr>
                             <?php endforeach; ?>
                             </tbody>
@@ -5065,6 +5111,7 @@ document.head.appendChild(style);
 // ─── PIN Security System ─────────────────────────────────────
 var pinCallback = null;
 var pendingCustomerData = null;
+var pendingTransactionData = null;
 
 function promptEditPin(customer) {
     pendingCustomerData = customer;
@@ -5086,9 +5133,22 @@ function promptDeletePin() {
     setTimeout(() => document.getElementById('pinInput').focus(), 200);
 }
 
+function promptTxnPin(transaction) {
+    pendingTransactionData = transaction;
+    pinCallback = 'transaction';
+    document.getElementById('pinPromptText').textContent = 'Enter security PIN to view transaction actions for "' + (transaction.clientName || 'Walk-in') + '"';
+    document.getElementById('pinInput').value = '';
+    document.getElementById('pinError').style.display = 'none';
+    document.getElementById('pinModal').classList.add('show');
+    setTimeout(() => document.getElementById('pinInput').focus(), 200);
+}
+
 function closePinModal() {
     document.getElementById('pinModal').classList.remove('show');
+    document.getElementById('pinInput').value = '';
     pinCallback = null;
+    pendingCustomerData = null;
+    pendingTransactionData = null;
 }
 document.getElementById('pinModal').addEventListener('click', function(e) { if (e.target === this) closePinModal(); });
 
@@ -5098,14 +5158,17 @@ async function verifyPin() {
     try {
         const res = await fetch('?action=verify_pin', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ pin }) });
         const data = await res.json();
-        if (!data.success) { document.getElementById('pinError').textContent = 'Incorrect PIN'; document.getElementById('pinError').style.display = ''; return; }
+        if (!data.success) { document.getElementById('pinError').textContent = data.error || 'Incorrect PIN'; document.getElementById('pinError').style.display = ''; return; }
         const cb = pinCallback;
+        const customer = pendingCustomerData;
+        const transaction = pendingTransactionData;
         closePinModal();
-        if (cb === 'edit' && pendingCustomerData) {
-            openEditModal(pendingCustomerData);
-            pendingCustomerData = null;
+        if (cb === 'edit' && customer) {
+            openEditModal(customer);
         } else if (cb === 'delete' && editCustomerData) {
             deleteCustomer(editCustomerData.name);
+        } else if (cb === 'transaction' && transaction) {
+            openTxnEditModal(transaction);
         }
     } catch(e) { document.getElementById('pinError').textContent = 'Error: ' + e.message; document.getElementById('pinError').style.display = ''; }
 }

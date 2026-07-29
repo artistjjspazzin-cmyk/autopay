@@ -2859,7 +2859,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                 <div class="card" style="padding: 0; overflow: hidden;">
                     <div class="table-wrap">
                         <table class="cust-list-table" id="customerTable">
-                            <thead><tr><th>Next Charge</th><th>Customer</th><th>Email</th><th>Phone</th><th>Address</th><th>Card</th><th>Amount</th><th style="cursor:pointer;" onclick="sortCustByDate()">Last Charge <span id="sortArrow">&#9662;</span></th><th>Charges</th><th>Autopay</th><th></th></tr></thead>
+                            <thead><tr><th>Next Charge</th><th>Customer</th><th>Email</th><th>Phone</th><th>Address</th><th>Card</th><th>Total Charged</th><th style="cursor:pointer;" onclick="sortCustByDate()">Last Charge <span id="sortArrow">&#9662;</span></th><th>Charges</th><th>Autopay</th><th></th></tr></thead>
                             <tbody>
                             <?php foreach ($customers as $c): ?>
                                 <?php
@@ -2885,11 +2885,10 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                 ?>
                                 <tr data-search="<?= strtolower($c['name'] . ' ' . ($c['email'] ?? '') . ' ' . ($c['phone'] ?? '')) ?>" data-date="<?= $c['lastCharge'] ?? '' ?>">
                                     <?php
-                                    // Get active autopay amount and next charge (computed early for column order)
-                                    $apAmount = 0; $apNextDate = '';
+                                    // Get the earliest active autopay charge date.
+                                    $apNextDate = '';
                                     foreach ($custAPs as $cap) {
                                         if ($cap['status'] === 'active') {
-                                            $apAmount += floatval($cap['amount'] ?? 0);
                                             if (empty($apNextDate) || ($cap['nextCharge'] ?? '') < $apNextDate) {
                                                 $apNextDate = $cap['nextCharge'] ?? '';
                                             }
@@ -2902,7 +2901,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                     <td class="clt-contact"><?php $ph = $c['phone'] ?? ''; echo $ph ? '<a href="tel:' . htmlspecialchars(preg_replace('/[^0-9+]/', '', $ph)) . '" style="color:#2563eb;text-decoration:none;">' . htmlspecialchars(formatPhone($ph)) . '</a>' : '—'; ?></td>
                                     <td style="font-size:12px; color:#6b7280;"><?php $addrParts2 = array_filter([$c['address'] ?? '', $c['city'] ?? '', (($c['state'] ?? '') ? ($c['state'] . ' ' . ($c['zip'] ?? '')) : ($c['zip'] ?? ''))]); echo $addrParts2 ? htmlspecialchars(implode(', ', $addrParts2)) : '—'; ?></td>
                                     <td style="font-size:11px;"><?= !empty($c['cardLast4']) ? htmlspecialchars(($c['cardBrand'] ?? 'Card') . ' ****' . $c['cardLast4']) : '<span style="color:#9ca3af;">No card</span>' ?></td>
-                                    <td style="font-weight:600; color:#7c3aed;"><?= $apAmount > 0 ? '$' . number_format($apAmount, 2) : '—' ?></td>
+                                    <td style="font-weight:600; color:#7c3aed;"><?= ($c['count'] ?? 0) > 0 ? '$' . number_format($c['total'] ?? 0, 2) : '—' ?></td>
                                     <td style="font-size: 12px; color: #6b7280;"><?= $c['lastCharge'] ? date('M j, Y', strtotime($c['lastCharge'])) : '—' ?></td>
                                     <td style="font-weight: 600; color: #2563eb;"><?= $c['count'] ?></td>
                                     <td><span class="ap-badge <?= $custAPStatus ?>"><?= $custAPLabel ?></span></td>

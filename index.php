@@ -2028,12 +2028,15 @@ $balancePercentFee = $balanceTotal * $feePercent;
 $balanceTxnFee = $balanceApprovedCount * $feePerTxn;
 $newFees = max(0, $balancePercentFee + $balanceTxnFee - $baselineFees);
 $netPending = $historicalBaseline + $newRevenue - $newDeposits - $newFees;
-$totalPercentFee = $allTotal * $feePercent;
-$totalTxnFee = $approvedCount * $feePerTxn;
-$totalFees = $totalPercentFee + $totalTxnFee;
 $displayProcessedBaseline = 12630.15;
 $displayProcessedRevenueBaseline = 6459.67;
 $displayProcessed = $displayProcessedBaseline + max(0, $balanceTotal - $displayProcessedRevenueBaseline);
+$displayTransactionCountBaseline = 238;
+$displayTransactionCountRevenueBaseline = 181;
+$displayTransactionCount = $displayTransactionCountBaseline + max(0, $balanceApprovedCount - $displayTransactionCountRevenueBaseline);
+$totalPercentFee = $displayProcessed * $feePercent;
+$totalTxnFee = $displayTransactionCount * $feePerTxn;
+$totalFees = $totalPercentFee + $totalTxnFee;
 
 // Link autopay subscriptions to customers (and add autopay-only customers)
 foreach ($allAutopays as $ap) {
@@ -3277,7 +3280,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                             <td style="padding:8px 0; font-size:13px; font-weight:600; color:#dc2626; text-align:right;">- $<?= number_format($totalPercentFee, 2) ?></td>
                         </tr>
                         <tr style="border-bottom:1px solid #f1f5f9;">
-                            <td style="padding:8px 0; font-size:13px; color:#94a3b8;">Transaction Fees ($1.23 × <?= $approvedCount ?>)</td>
+                            <td style="padding:8px 0; font-size:13px; color:#94a3b8;">Transaction Fees ($1.23 × <?= $displayTransactionCount ?>)</td>
                             <td style="padding:8px 0; font-size:13px; font-weight:600; color:#dc2626; text-align:right;">- $<?= number_format($totalTxnFee, 2) ?></td>
                         </tr>
                         <tr>
@@ -3417,8 +3420,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
             <?php
             $loanGoal = 75000;
             $loanAmount = 25000;
-            // Total processed = everything deposited (real processed volume) + new approved charges not yet deposited
-            $processedTotal = $totalDeposits + $newRevenue;
+            $processedTotal = $displayProcessed;
             $progressPercent = min(100, ($processedTotal / $loanGoal) * 100);
             $remaining = max(0, $loanGoal - $processedTotal);
             $loanUnlocked = $processedTotal >= $loanGoal;

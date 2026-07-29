@@ -2005,6 +2005,9 @@ $netPending = $historicalBaseline + $newRevenue - $newDeposits - $newFees;
 $totalPercentFee = $allTotal * $feePercent;
 $totalTxnFee = $approvedCount * $feePerTxn;
 $totalFees = $totalPercentFee + $totalTxnFee;
+$displayProcessedBaseline = 12630.15;
+$displayProcessedRevenueBaseline = 6459.67;
+$displayProcessed = $displayProcessedBaseline + max(0, $balanceTotal - $displayProcessedRevenueBaseline);
 
 // Link autopay subscriptions to customers (and add autopay-only customers)
 foreach ($allAutopays as $ap) {
@@ -3232,8 +3235,8 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                     <div style="font-size:14px; font-weight:700; color:#1e293b; margin-bottom:14px;">Account Summary</div>
                     <table style="width:100%; border-collapse:collapse;">
                         <tr style="border-bottom:1px solid #f1f5f9;">
-                            <td style="padding:8px 0; font-size:13px; color:#475569;">Total Processed (<?= $approvedCount ?> payments)</td>
-                            <td style="padding:8px 0; font-size:13px; font-weight:600; color:#1e293b; text-align:right;">$<?= number_format($allTotal, 2) ?></td>
+                            <td style="padding:8px 0; font-size:13px; color:#475569;">Total Processed</td>
+                            <td style="padding:8px 0; font-size:13px; font-weight:600; color:#1e293b; text-align:right;">$<?= number_format($displayProcessed, 2) ?></td>
                         </tr>
                         <tr style="border-bottom:1px solid #f1f5f9;">
                             <td style="padding:8px 0; font-size:13px; color:#475569;">Total Deposited</td>

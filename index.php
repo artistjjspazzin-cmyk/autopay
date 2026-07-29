@@ -1846,6 +1846,32 @@ if (isset($_GET['action']) && $_GET['action'] === 'export_csv' && $isAdminAuth) 
         fclose($out);
         exit;
     }
+    if ($type === 'sessions') {
+        header('Content-Type: text/csv');
+        header('Content-Disposition: attachment; filename="sessions_' . date('Y-m-d') . '.csv"');
+        $out = fopen('php://output', 'w');
+        fputcsv($out, ['Status', 'IP Address', 'City', 'Region', 'Country', 'ISP / Network', 'Device', 'Browser', 'OS', 'Login Time', 'Last Active', 'Page Views']);
+        $sessions = getActiveSessions();
+        usort($sessions, fn($a, $b) => strtotime($b['lastActive'] ?? '') - strtotime($a['lastActive'] ?? ''));
+        foreach ($sessions as $s) {
+            fputcsv($out, [
+                $s['status'] ?? '',
+                $s['ip'] ?? '',
+                $s['city'] ?? '',
+                $s['region'] ?? '',
+                $s['country'] ?? '',
+                $s['isp'] ?? '',
+                $s['device'] ?? '',
+                $s['browser'] ?? '',
+                $s['os'] ?? '',
+                !empty($s['loginTime']) ? date('Y-m-d H:i', strtotime($s['loginTime'])) : '',
+                !empty($s['lastActive']) ? date('Y-m-d H:i', strtotime($s['lastActive'])) : '',
+                $s['pageViews'] ?? 0,
+            ]);
+        }
+        fclose($out);
+        exit;
+    }
 }
 
 // ─── If not admin-authed, show login page ───────────────────
@@ -2560,9 +2586,10 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                 <th style="cursor:pointer;" onclick="sortDashTable(1)">Client</th>
                                 <th style="cursor:pointer;" onclick="sortDashTable(2)">Phone</th>
                                 <th style="cursor:pointer;" onclick="sortDashTable(3)">Email</th>
-                                <th style="cursor:pointer;" onclick="sortDashTable(4)">Amount</th>
-                                <th style="cursor:pointer;" onclick="sortDashTable(5)">Type</th>
-                                <th style="cursor:pointer;" onclick="sortDashTable(6)">Status</th>
+                                <th style="cursor:pointer;" onclick="sortDashTable(4)">Address</th>
+                                <th style="cursor:pointer;" onclick="sortDashTable(5)">Amount</th>
+                                <th style="cursor:pointer;" onclick="sortDashTable(6)">Type</th>
+                                <th style="cursor:pointer;" onclick="sortDashTable(7)">Status</th>
                                 <th>Action</th>
                             </tr></thead>
                             <tbody>
@@ -2579,6 +2606,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                     <td style="color:#1a1a2e; font-weight:500;"><?= htmlspecialchars($t['clientName'] ?: 'Walk-in') ?></td>
                                     <td style="font-size:12px;"><?php if (!empty($t['clientPhone'])): ?><a href="tel:<?= htmlspecialchars(preg_replace('/[^0-9+]/', '', $t['clientPhone'])) ?>" style="color:#2563eb; text-decoration:none;"><?= htmlspecialchars(formatPhone($t['clientPhone'])) ?></a><?php endif; ?></td>
                                     <td style="font-size:12px;"><?php if (!empty($t['clientEmail'])): ?><a href="mailto:<?= htmlspecialchars($t['clientEmail']) ?>" style="color:#2563eb; text-decoration:none;"><?= htmlspecialchars($t['clientEmail']) ?></a><?php endif; ?></td>
+                                    <td style="font-size:12px; color:#6b7280;"><?php $rtAddr = array_filter([$t['clientAddress'] ?? '', $t['clientCity'] ?? '', (($t['clientState'] ?? '') ? ($t['clientState'] . ' ' . ($t['clientZip'] ?? '')) : ($t['clientZip'] ?? ''))]); echo $rtAddr ? htmlspecialchars(implode(', ', $rtAddr)) : '—'; ?></td>
                                     <td style="color:#1a1a2e; font-weight:600;">$<?= number_format($t['amount'], 2) ?></td>
                                     <td><?php if (getTransactionType($t) === 'auto'): ?><span class="badge badge-autopay">Auto</span><?php else: ?>Manual<?php endif; ?></td>
                                     <td><span class="badge badge-<?= $t['status'] ?>"><?= ucfirst($t['status']) ?></span></td>
@@ -2666,6 +2694,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                     <th style="padding:10px 14px; text-align:left; font-weight:700; color:#1e293b; font-size:12px;">Customer</th>
                                     <th style="padding:10px 14px; text-align:left; font-weight:700; color:#1e293b; font-size:12px;">Phone</th>
                                     <th style="padding:10px 14px; text-align:left; font-weight:700; color:#1e293b; font-size:12px;">Email</th>
+                                    <th style="padding:10px 14px; text-align:left; font-weight:700; color:#1e293b; font-size:12px;">Address</th>
                                     <th style="padding:10px 14px; text-align:right; font-weight:700; color:#1e293b; font-size:12px;">Amount</th>
                                     <th style="padding:10px 14px; text-align:center; font-weight:700; color:#1e293b; font-size:12px;">Frequency</th>
                                     <th style="padding:10px 14px; text-align:center; font-weight:700; color:#1e293b; font-size:12px;">Card</th>
@@ -2696,6 +2725,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                     <td style="padding:10px 14px; color:#1e293b; font-weight:600;"><?= htmlspecialchars($us['clientName'] ?? 'Unknown') ?></td>
                                     <td style="padding:10px 14px; font-size:12px;"><?php $uph = $us['clientPhone'] ?? ''; echo $uph ? '<a href="tel:' . htmlspecialchars(preg_replace('/[^0-9+]/', '', $uph)) . '" style="color:#2563eb;text-decoration:none;">' . htmlspecialchars(formatPhone($uph)) . '</a>' : '-'; ?></td>
                                     <td style="padding:10px 14px; font-size:12px;"><?php $uem = $us['clientEmail'] ?? ''; echo $uem ? '<a href="mailto:' . htmlspecialchars($uem) . '" style="color:#2563eb;text-decoration:none;">' . htmlspecialchars($uem) . '</a>' : '-'; ?></td>
+                                    <td style="padding:10px 14px; font-size:12px; color:#6b7280;"><?php $usAddr = array_filter([$us['clientAddress'] ?? '', $us['clientCity'] ?? '', (($us['clientState'] ?? '') ? ($us['clientState'] . ' ' . ($us['clientZip'] ?? '')) : ($us['clientZip'] ?? ''))]); echo $usAddr ? htmlspecialchars(implode(', ', $usAddr)) : '<span style="color:#ef4444;">Missing</span>'; ?></td>
                                     <td style="padding:10px 14px; color:#059669; font-weight:700; text-align:right;">$<?= number_format($us['amount'] ?? 0, 2) ?></td>
                                     <td style="padding:10px 14px; text-align:center;">
                                         <span style="background:#e0e7ff; color:#4338ca; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:500;"><?= ucfirst($us['frequency'] ?? 'monthly') ?></span>
@@ -3446,6 +3476,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                     </div>
                     <div style="display:flex; gap:8px;">
                         <button onclick="refreshSessions()" style="background:#f3f4f6; color:#374151; border:none; padding:8px 14px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;">↻ Refresh</button>
+                        <a href="?action=export_csv&type=sessions" style="background:#eef2ff; color:#4338ca; border:1px solid #c7d2fe; padding:8px 14px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; text-decoration:none;">Export CSV</a>
                         <button onclick="kickAllSessions()" style="background:#fef2f2; color:#dc2626; border:1px solid #fecaca; padding:8px 14px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;">⛔ Kick All Others</button>
                         <button onclick="clearSessionHistory()" style="background:#fff7ed; color:#ea580c; border:1px solid #fed7aa; padding:8px 14px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;">🗑 Clear History</button>
                     </div>
@@ -5336,7 +5367,7 @@ function sortDashTable(col) {
     rows.sort((a, b) => {
         let va, vb;
         if (col === 0) { va = a.dataset.sortTime || ''; vb = b.dataset.sortTime || ''; }
-        else if (col === 4) { va = parseFloat(a.dataset.sortAmount) || 0; vb = parseFloat(b.dataset.sortAmount) || 0; return dashSortAsc ? va - vb : vb - va; }
+        else if (col === 5) { va = parseFloat(a.dataset.sortAmount) || 0; vb = parseFloat(b.dataset.sortAmount) || 0; return dashSortAsc ? va - vb : vb - va; }
         else { va = (a.cells[col]?.textContent || '').toLowerCase(); vb = (b.cells[col]?.textContent || '').toLowerCase(); }
         return dashSortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
     });

@@ -1958,6 +1958,7 @@ $weekTotal = 0; $weekCount = 0;
 $monthTotal = 0; $monthCount = 0;
 $allTotal = 0; $allCount = 0;
 $approvedCount = 0; $declinedCount = 0;
+$balanceTotal = 0; $balanceApprovedCount = 0;
 $customers = [];
 
 foreach ($allTxns as $t) {
@@ -1967,6 +1968,7 @@ foreach ($allTxns as $t) {
     $isApproved = ($t['status'] ?? '') === 'approved';
     if ($isApproved) {
         $approvedCount++; $allTotal += $amt; $allCount++;
+        if (empty($t['recoveryBatch'])) { $balanceTotal += $amt; $balanceApprovedCount++; }
         if ($tDate === $todayStr) { $todayTotal += $amt; $todayCount++; }
         if ($tDate >= $weekStart) { $weekTotal += $amt; $weekCount++; }
         if ($tMonth === $monthStr) { $monthTotal += $amt; $monthCount++; }
@@ -1987,21 +1989,22 @@ foreach ($allTxns as $t) {
 $avgCharge = $allCount > 0 ? $allTotal / $allCount : 0;
 
 // Compute pending balance & fees
-// Historical revenue baseline: $2,693.63 as of Jul 7, 2026
-// This accounts for revenue processed before the tracking system was set up
-$historicalBaseline = 2693.63;
-$baselineRevenue = 1504.70;  // allTotal at time of baseline
-$baselineDeposits = 5428.46; // totalDeposits at time of baseline
-$baselineFees = 1504.70 * 0.029 + 88 * 1.23; // fees at time of baseline
-$newRevenue = max(0, $allTotal - $baselineRevenue);
-$newDeposits = max(0, $totalDeposits - $baselineDeposits);
+// Recovered historical records remain visible without changing the live settlement balance.
+$historicalBaseline = 2383.35;
+$baselineRevenue = 6459.67;
+$baselineDeposits = 10246.80;
 $feePercent = 0.029; // 2.9%
 $feePerTxn = 1.23;  // $1.23 per transaction
+$baselineFees = $baselineRevenue * $feePercent + 181 * $feePerTxn;
+$newRevenue = max(0, $balanceTotal - $baselineRevenue);
+$newDeposits = max(0, $totalDeposits - $baselineDeposits);
+$balancePercentFee = $balanceTotal * $feePercent;
+$balanceTxnFee = $balanceApprovedCount * $feePerTxn;
+$newFees = max(0, $balancePercentFee + $balanceTxnFee - $baselineFees);
+$netPending = $historicalBaseline + $newRevenue - $newDeposits - $newFees;
 $totalPercentFee = $allTotal * $feePercent;
 $totalTxnFee = $approvedCount * $feePerTxn;
 $totalFees = $totalPercentFee + $totalTxnFee;
-$newFees = max(0, $totalFees - $baselineFees);
-$netPending = $historicalBaseline + $newRevenue - $newDeposits - $newFees;
 
 // Link autopay subscriptions to customers (and add autopay-only customers)
 foreach ($allAutopays as $ap) {

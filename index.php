@@ -2016,7 +2016,7 @@ $avgCharge = $allCount > 0 ? $allTotal / $allCount : 0;
 
 // Compute pending balance & fees
 // Recovered historical records remain visible without changing the live settlement balance.
-$historicalBaseline = 2383.35;
+$historicalBaseline = 1324.35;
 $baselineRevenue = 6459.67;
 $baselineDeposits = 10246.80;
 $feePercent = 0.029; // 2.9%
@@ -2028,7 +2028,7 @@ $balancePercentFee = $balanceTotal * $feePercent;
 $balanceTxnFee = $balanceApprovedCount * $feePerTxn;
 $newFees = max(0, $balancePercentFee + $balanceTxnFee - $baselineFees);
 $netPending = $historicalBaseline + $newRevenue - $newDeposits - $newFees;
-$displayProcessedBaseline = 12630.15;
+$displayProcessedBaseline = 11571.15;
 $displayProcessedRevenueBaseline = 6459.67;
 $displayProcessed = $displayProcessedBaseline + max(0, $balanceTotal - $displayProcessedRevenueBaseline);
 $displayTransactionCountBaseline = 238;

@@ -41,7 +41,12 @@ function squireProxyAPI($method, $endpoint, $data = null, $token = null) {
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
     $body = json_decode($resp, true);
-    if ($body && isset($body['code'])) return ['code' => $body['code'], 'body' => $body['body'] ?? $body];
+    if ($body && isset($body['code'])) return [
+        'code' => $body['code'],
+        'body' => $body['body'] ?? $body,
+        'raw' => $body['raw'] ?? '',
+        'gatewayUnavailable' => !empty($body['gatewayUnavailable']),
+    ];
     return ['code' => $httpCode, 'body' => $body, 'raw' => $resp];
 }
 
@@ -310,7 +315,7 @@ if (!empty($dueIndexes)) {
     }
 
     // Fallback to stored token (legacy, may be expired)
-    if ((!$result || $result['code'] < 200 || $result['code'] >= 300) && !empty($sub['stripeToken'])) {
+    if ((!$result || (($result['code'] < 200 || $result['code'] >= 300) && empty($result['gatewayUnavailable']))) && !empty($sub['stripeToken'])) {
         echo "    Trying stored token fallback...\n";
         $result = chargeViaSquire($sub['stripeToken'], $amountCents, $token);
     }
@@ -327,6 +332,10 @@ if (!empty($dueIndexes)) {
         else { $sub['nextCharge'] = date('Y-m-d', strtotime('+1 day')); echo "    Will retry tomorrow (attempt {$sub['failCount']}/3)\n"; }
         $failed = 1;
         $transactions[] = ['id' => uniqid('txn_'), 'amount' => $amount, 'description' => $sub['description'] ?? 'Autopay', 'clientName' => $sub['clientName'], 'clientEmail' => $sub['clientEmail'] ?? '', 'clientPhone' => $sub['clientPhone'] ?? '', 'status' => 'declined', 'timestamp' => date('c'), 'cardLast4' => $sub['cardLast4'] ?? '****', 'cardBrand' => $sub['cardBrand'] ?? 'Card', 'source' => 'autopay', 'subscriptionId' => $sub['id'], 'error' => 'No payment method available'];
+
+    } elseif (!empty($result['gatewayUnavailable'])) {
+        echo "    GATEWAY UNAVAILABLE: No charge was submitted; subscription remains active\n";
+        $processed = 0;
 
     } elseif ($result['code'] >= 200 && $result['code'] < 300) {
         echo "    SUCCESS: Charged \${$amount}\n";

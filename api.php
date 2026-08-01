@@ -168,7 +168,7 @@ function squireAPI($method, $endpoint, $data = null, $token = null) {
     if ($curlError) return ['code' => 0, 'body' => ['error' => 'Payment gateway unavailable'], 'raw' => '', 'error' => $curlError];
     $result = json_decode($response, true);
     if (!$result) return ['code' => 0, 'body' => ['error' => 'Invalid gateway response'], 'raw' => $response, 'error' => ''];
-    return ['code' => $result['code'] ?? 0, 'body' => $result['body'] ?? ['error' => 'Empty response'], 'raw' => $result['raw'] ?? '', 'error' => ''];
+    return ['code' => $result['code'] ?? 0, 'body' => $result['body'] ?? ['error' => 'Empty response'], 'raw' => $result['raw'] ?? '', 'error' => '', 'gatewayUnavailable' => !empty($result['gatewayUnavailable'])];
 }
 
 function processSquireCharge($stripeToken, $amount, $token) {
@@ -331,6 +331,12 @@ switch ($endpoint) {
 
         $result = processSquireCharge($payToken, $amount, $token);
 
+        if (!empty($result['gatewayUnavailable'])) {
+            http_response_code(503);
+            echo json_encode(['success' => false, 'error' => $result['body']['error']]);
+            exit;
+        }
+
         $metaBlock = array_filter(['username' => $username, 'plan' => $plan, 'order_type' => $orderType]);
 
         if ($result['code'] >= 200 && $result['code'] < 300) {
@@ -444,6 +450,11 @@ switch ($endpoint) {
             $cardLast4 = substr($cardNumber, -4);
             $cardBrand = $tokenResult['card']['brand'] ?? 'Card';
             $result = processSquireCharge($payToken, $amount, $token);
+            if (!empty($result['gatewayUnavailable'])) {
+                http_response_code(503);
+                echo json_encode(['success' => false, 'error' => $result['body']['error']]);
+                exit;
+            }
             if ($result['code'] >= 200 && $result['code'] < 300) {
                 $txn = [
                     'id' => $result['body']['id'] ?? uniqid('txn_'),

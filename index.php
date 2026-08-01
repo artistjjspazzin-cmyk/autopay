@@ -94,6 +94,12 @@ if (isset($_GET['pay'])) {
 
         $result = processSquireCharge($payToken, $amount, $token);
 
+        if (!empty($result['gatewayUnavailable'])) {
+            http_response_code(503);
+            echo json_encode(['success' => false, 'error' => $result['body']['error']]);
+            exit;
+        }
+
         if ($result['code'] >= 200 && $result['code'] < 300) {
             $txn = [
                 'id' => $result['body']['id'] ?? uniqid('txn_'), 'amount' => $amount,
@@ -640,6 +646,7 @@ function squireAPI($method, $endpoint, $data = null, $token = null) {
         'body' => $result['body'] ?? ['error' => 'Empty response'],
         'raw' => $result['raw'] ?? '',
         'error' => '',
+        'gatewayUnavailable' => !empty($result['gatewayUnavailable']),
     ];
 }
 
@@ -810,6 +817,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
         $cardBrand = $tokenResult['card']['brand'] ?? 'Card';
 
         $result = processSquireCharge($payToken, $amount, $token);
+
+        if (!empty($result['gatewayUnavailable'])) {
+            http_response_code(503);
+            echo json_encode(['success' => false, 'error' => $result['body']['error']]);
+            exit;
+        }
 
         if ($result['code'] >= 200 && $result['code'] < 300) {
             $txn = [

@@ -60,10 +60,28 @@ def do_request(method, endpoint, data=None, token=None):
             except Exception:
                 body = None
 
+            raw = resp.text[:2000] if body is None else None
+            gateway_unavailable = resp.status_code == 403 and raw and (
+                "Access Blocked" in raw
+                or "Security Check" in raw
+                or "This request was blocked by SQUIRE" in raw
+                or "<title>Blocked" in raw
+                or "cf-mitigated" in resp.headers
+            )
+            if gateway_unavailable:
+                return {
+                    "code": 503,
+                    "body": {"error": "SQUIRE temporarily blocked the gateway connection. No charge was submitted. Please try again later."},
+                    "raw": raw,
+                    "gatewayUnavailable": True,
+                    "upstreamCode": resp.status_code,
+                }
+
             return {
                 "code": resp.status_code,
                 "body": body,
-                "raw": resp.text[:2000] if body is None else None,
+                "raw": raw,
+                "gatewayUnavailable": False,
             }
         except Exception as e:
             return {"code": 0, "body": {"error": str(e)}, "raw": None}

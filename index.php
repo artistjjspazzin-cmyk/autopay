@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/storage.php';
+
 /**
  * Authorize.net Terminal
  * Login-gated, transaction logging, dashboard analytics, autopay/recurring billing
@@ -14,17 +16,7 @@ $SQUIRE_API_BASE = getenv('SQUIRE_API_BASE') ?: 'https://api.getsquire.com';
 $SHOP_ID = getenv('SQUIRE_SHOP_ID') ?: '';
 $STRIPE_PK = getenv('STRIPE_PUBLISHABLE_KEY') ?: '';
 $US_PROXY = getenv('US_PROXY_URL') ?: '';
-$STRIPE_SK = getenv('STRIPE_SECRET_KEY') ?: (file_exists(__DIR__ . '/data/stripe_sk.txt') ? trim(file_get_contents(__DIR__ . '/data/stripe_sk.txt')) : '');
-$CREDS_FILE = __DIR__ . '/data/squire_creds.json';
-$TOKEN_FILE = __DIR__ . '/data/squire_token.txt';
-$TXN_FILE   = __DIR__ . '/data/transactions.json';
-$AUTOPAY_FILE = __DIR__ . '/data/autopay.json';
-$SAVED_CARDS_FILE = __DIR__ . '/data/saved_cards.json';
-$DEPOSITS_FILE = __DIR__ . '/data/deposits.json';
-$DISPUTES_FILE = __DIR__ . '/data/disputes.json';
-$SESSIONS_FILE = __DIR__ . '/data/sessions.json';
-$AUDIT_FILE = __DIR__ . '/data/audit_log.json';
-$LINKS_FILE = __DIR__ . '/data/payment_links.json';
+$STRIPE_SK = getenv('STRIPE_SECRET_KEY') ?: storageReadText('stripe_sk.txt');
 
 $ADMIN_USER = getenv('ADMIN_USER') ?: 'admin';
 $ADMIN_PASS = getenv('ADMIN_PASSWORD') ?: '';
@@ -56,49 +48,7 @@ if (isset($_GET['pay'])) {
     $link = null;
     foreach ($links as $l) { if (($l['id'] ?? '') === $linkId) { $link = $l; break; } }
     if (!$link || ($link['status'] ?? '') !== 'active') {
-        echo '<!DOCTYPE html><html><head><title>Payment Link</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f0f2f5;}.card{background:#fff;border-radius:16px;padding:48px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:420px;}h2{color:#e74c3c;margin-bottom:12px;}p{color:#666;}</style></head><body><div class="card"><h2>Link Expired</h2><p>This payment link is no longer active or has already been used.</p></div>
-<!-- Add Customer Modal -->
-<div class="modal-overlay" id="addCustomerModal" onclick="if(event.target===this)closeAddCustomerModal()">
-    <div class="modal-content" style="max-width:500px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h2 style="margin:0; font-size:18px;">Add New Customer</h2>
-            <button onclick="closeAddCustomerModal()" style="background:none; border:none; font-size:22px; cursor:pointer; color:#6b7280;">&times;</button>
-        </div>
-        <div class="form-group" style="margin-bottom:12px;">
-            <label style="font-size:12px; font-weight:600; color:#374151;">Full Name *</label>
-            <input type="text" id="addCustName" placeholder="John Smith" style="width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:13px;">
-        </div>
-        <div class="form-group" style="margin-bottom:12px;">
-            <label style="font-size:12px; font-weight:600; color:#374151;">Email</label>
-            <input type="email" id="addCustEmail" placeholder="john@email.com" style="width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:13px;">
-        </div>
-        <div class="form-group" style="margin-bottom:12px;">
-            <label style="font-size:12px; font-weight:600; color:#374151;">Phone</label>
-            <input type="tel" id="addCustPhone" placeholder="(555) 123-4567" style="width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:13px;">
-        </div>
-        <div class="form-group" style="margin-bottom:12px;">
-            <label style="font-size:12px; font-weight:600; color:#374151;">Address</label>
-            <input type="text" id="addCustAddress" placeholder="123 Main St" style="width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:13px;">
-        </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:12px;">
-            <div>
-                <label style="font-size:12px; font-weight:600; color:#374151;">City</label>
-                <input type="text" id="addCustCity" placeholder="City" style="width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:13px;">
-            </div>
-            <div>
-                <label style="font-size:12px; font-weight:600; color:#374151;">State</label>
-                <input type="text" id="addCustState" placeholder="ST" maxlength="2" style="width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:13px;">
-            </div>
-            <div>
-                <label style="font-size:12px; font-weight:600; color:#374151;">Zip</label>
-                <input type="text" id="addCustZip" placeholder="12345" maxlength="10" style="width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:13px;">
-            </div>
-        </div>
-        <div id="addCustStatus" style="display:none; padding:8px 12px; border-radius:8px; margin-bottom:12px; font-size:12px;"></div>
-        <button class="btn-primary" style="width:100%; padding:10px; font-size:14px; font-weight:600;" onclick="saveNewCustomer()">Save Customer</button>
-    </div>
-</div>
-</body></html>';
+        echo '<!DOCTYPE html><html><head><title>Payment Link</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f0f2f5;}.card{background:#fff;border-radius:16px;padding:48px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:420px;}h2{color:#e74c3c;margin-bottom:12px;}p{color:#666;}</style></head><body><div class="card"><h2>Link Expired</h2><p>This payment link is no longer active or has already been used.</p></div></body></html>';
         exit;
     }
 
@@ -144,6 +94,12 @@ if (isset($_GET['pay'])) {
 
         $result = processSquireCharge($payToken, $amount, $token);
 
+        if (!empty($result['gatewayUnavailable'])) {
+            http_response_code(503);
+            echo json_encode(['success' => false, 'error' => $result['body']['error']]);
+            exit;
+        }
+
         if ($result['code'] >= 200 && $result['code'] < 300) {
             $txn = [
                 'id' => $result['body']['id'] ?? uniqid('txn_'), 'amount' => $amount,
@@ -174,9 +130,9 @@ if (isset($_GET['pay'])) {
                     'description' => $link['description'] ?? 'Monthly Subscription',
                     'createdAt' => date('c'), 'source' => $link['source'] ?? 'link',
                 ];
-                $autopays = json_decode(file_get_contents($AUTOPAY_FILE), true) ?: [];
+                $autopays = getAutopays();
                 $autopays[] = $sub;
-                file_put_contents($AUTOPAY_FILE, json_encode($autopays, JSON_PRETTY_PRINT), LOCK_EX);
+                saveAutopays($autopays);
             }
 
             // Payment links stay active and reusable — never marked used/expired.
@@ -349,6 +305,7 @@ async function submitPay(e){
         btn.disabled=false;btn.textContent="Pay $"+selectedAmount.toFixed(2);
     }
 }
+document.addEventListener("keydown",function(e){if(e.target&&e.target.type==="tel"&&e.key==="Backspace"&&e.target.selectionStart===e.target.selectionEnd){var c=e.target.selectionStart;while(c>0&&/[^0-9]/.test(e.target.value.charAt(c-1)))c--;if(c!==e.target.selectionStart)e.target.setSelectionRange(c,c);}});
 document.addEventListener("input",function(e){if(e.target&&e.target.type==="tel"){var d=e.target.value.replace(/[^0-9]/g,"");if(d.length>10)d=d.substring(0,10);var f="";if(d.length>0)f="("+d.substring(0,3);if(d.length>=3)f+=") ";if(d.length>3)f+=d.substring(3,6);if(d.length>=6)f+="-"+d.substring(6,10);e.target.value=f;}});
 </script></body></html>';
     exit;
@@ -371,20 +328,11 @@ if ($isAdminAuth) {
 
 // ─── Session Tracking Helpers ─────────────────────────────────
 function getActiveSessions() {
-    global $SESSIONS_FILE;
-    if (file_exists($SESSIONS_FILE)) {
-        $data = json_decode(file_get_contents($SESSIONS_FILE), true);
-        if (is_array($data)) return $data;
-    }
-    return [];
+    return storageReadDocument('sessions.json', []);
 }
 
 function saveSessions($sessions) {
-    global $SESSIONS_FILE;
-    $dir = dirname($SESSIONS_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($SESSIONS_FILE, json_encode($sessions, JSON_PRETTY_PRINT), LOCK_EX);
-    chmod($SESSIONS_FILE, 0600);
+    storageWriteDocument('sessions.json', $sessions);
 }
 
 function getClientIP() {
@@ -485,125 +433,126 @@ function isSessionKicked() {
 
 // ─── Helpers ─────────────────────────────────────────────────
 function getSavedCreds() {
-    global $CREDS_FILE;
-    if (file_exists($CREDS_FILE)) {
-        $data = json_decode(file_get_contents($CREDS_FILE), true);
-        if ($data && isset($data['username']) && isset($data['password'])) return $data;
-    }
+    $data = storageReadDocument('squire_creds.json', null);
+    if ($data && isset($data['username']) && isset($data['password'])) return $data;
     return null;
 }
 
 function saveCreds($username, $password) {
-    global $CREDS_FILE;
-    $dir = dirname($CREDS_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($CREDS_FILE, json_encode(['username' => $username, 'password' => $password]), LOCK_EX);
-    chmod($CREDS_FILE, 0600);
+    storageWriteDocument('squire_creds.json', ['username' => $username, 'password' => $password]);
 }
 
 function getToken() {
-    global $TOKEN_FILE;
     if (!empty($_SESSION['squire_token'])) return $_SESSION['squire_token'];
-    if (file_exists($TOKEN_FILE)) {
-        $token = trim(file_get_contents($TOKEN_FILE));
-        if ($token) { $_SESSION['squire_token'] = $token; return $token; }
-    }
+    $token = storageReadText('squire_token.txt');
+    if ($token) { $_SESSION['squire_token'] = $token; return $token; }
     return '';
 }
 
 function saveToken($token) {
-    global $TOKEN_FILE;
-    $dir = dirname($TOKEN_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($TOKEN_FILE, $token, LOCK_EX);
-    chmod($TOKEN_FILE, 0600);
+    storageWriteText('squire_token.txt', $token);
     $_SESSION['squire_token'] = $token;
 }
 
 function getTransactions() {
-    global $TXN_FILE;
-    if (file_exists($TXN_FILE)) {
-        $data = json_decode(file_get_contents($TXN_FILE), true);
-        if (is_array($data)) return $data;
-    }
-    return [];
+    return storageReadDocument('transactions.json', []);
 }
 
 function saveTransaction($txn) {
-    global $TXN_FILE;
-    $dir = dirname($TXN_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    $all = getTransactions();
-    array_unshift($all, $txn);
-    file_put_contents($TXN_FILE, json_encode($all, JSON_PRETTY_PRINT), LOCK_EX);
-    chmod($TXN_FILE, 0600);
+    storageMutateDocument('transactions.json', [], function($all) use ($txn) {
+        array_unshift($all, $txn);
+        return $all;
+    });
 }
 
 function saveTransactions($all) {
-    global $TXN_FILE;
-    $dir = dirname($TXN_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($TXN_FILE, json_encode($all, JSON_PRETTY_PRINT), LOCK_EX);
-    chmod($TXN_FILE, 0600);
+    storageWriteDocument('transactions.json', $all);
 }
 
 function getSavedCards() {
-    global $SAVED_CARDS_FILE;
-    if (file_exists($SAVED_CARDS_FILE)) {
-        $data = json_decode(file_get_contents($SAVED_CARDS_FILE), true);
-        if (is_array($data)) return $data;
-    }
-    return [];
+    return storageReadDocument('saved_cards.json', []);
 }
 
 function saveSavedCards($all) {
-    global $SAVED_CARDS_FILE;
-    $dir = dirname($SAVED_CARDS_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($SAVED_CARDS_FILE, json_encode($all, JSON_PRETTY_PRINT), LOCK_EX);
-    chmod($SAVED_CARDS_FILE, 0600);
+    storageWriteDocument('saved_cards.json', $all);
 }
 
-$AUDIT_FILE = __DIR__ . '/data/audit_log.json';
-$LINKS_FILE = __DIR__ . '/data/payment_links.json';
-$ADMIN_PIN = '8802';
+function normalizeCustomerName($name) {
+    return strtolower(trim((string)$name));
+}
+
+function customerDeletionKey($name) {
+    $normalized = normalizeCustomerName($name);
+    return $normalized === '' ? '' : hash('sha256', $normalized);
+}
+
+function getDeletedCustomerKeys() {
+    $keys = storageReadDocument('deleted_customers.json', []);
+    return array_values(array_unique(array_filter(is_array($keys) ? $keys : [], 'is_string')));
+}
+
+function markCustomerDeleted($name) {
+    $key = customerDeletionKey($name);
+    if ($key === '') return;
+    storageMutateDocument('deleted_customers.json', [], function($keys) use ($key) {
+        $keys = is_array($keys) ? $keys : [];
+        if (!in_array($key, $keys, true)) $keys[] = $key;
+        return array_values($keys);
+    });
+}
+
+function restoreDeletedCustomer($name) {
+    $key = customerDeletionKey($name);
+    if ($key === '' || !storageHasDocument('deleted_customers.json')) return;
+    storageMutateDocument('deleted_customers.json', [], function($keys) use ($key) {
+        $keys = is_array($keys) ? $keys : [];
+        return array_values(array_filter($keys, function($deletedKey) use ($key) {
+            return $deletedKey !== $key;
+        }));
+    });
+}
+
+function transactionActionPinHash() {
+    storageLoadConfig();
+    $hash = getenv('TRANSACTION_ACTION_PIN_HASH');
+    return is_string($hash) ? trim($hash) : '';
+}
+
+function isTransactionActionPinAuthorized() {
+    return (int)($_SESSION['transaction_action_pin_verified_until'] ?? 0) >= time();
+}
+
+function requireTransactionActionPinAuthorization() {
+    if (isTransactionActionPinAuthorized()) return;
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => 'Security PIN verification required']);
+    exit;
+}
 
 function getPaymentLinks() {
-    global $LINKS_FILE;
-    if (file_exists($LINKS_FILE)) {
-        $data = json_decode(file_get_contents($LINKS_FILE), true);
-        if (is_array($data)) return $data;
-    }
-    return [];
+    return storageReadDocument('payment_links.json', []);
 }
 function savePaymentLinks($all) {
-    global $LINKS_FILE;
-    $dir = dirname($LINKS_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($LINKS_FILE, json_encode($all, JSON_PRETTY_PRINT), LOCK_EX);
-    chmod($LINKS_FILE, 0600);
+    storageWriteDocument('payment_links.json', $all);
 }
 
 function getAuditLog() {
-    global $AUDIT_FILE;
-    if (!file_exists($AUDIT_FILE)) return [];
-    return json_decode(file_get_contents($AUDIT_FILE), true) ?: [];
+    return storageReadDocument('audit_log.json', []);
 }
 function addAuditEntry($action, $target, $details = '') {
-    global $AUDIT_FILE;
-    $log = getAuditLog();
     $ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
     $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
-    array_unshift($log, [
-        'timestamp' => date('c'),
-        'action' => $action,
-        'target' => $target,
-        'details' => $details,
-        'ip' => $ip,
-        'userAgent' => $ua,
-    ]);
-    if (count($log) > 5000) $log = array_slice($log, 0, 5000);
-    file_put_contents($AUDIT_FILE, json_encode($log, JSON_PRETTY_PRINT), LOCK_EX);
+    storageMutateDocument('audit_log.json', [], function($log) use ($action, $target, $details, $ip, $ua) {
+        array_unshift($log, [
+            'timestamp' => date('c'),
+            'action' => $action,
+            'target' => $target,
+            'details' => $details,
+            'ip' => $ip,
+            'userAgent' => $ua,
+        ]);
+        return count($log) > 5000 ? array_slice($log, 0, 5000) : $log;
+    });
 }
 
 function saveCardForCustomer($clientName, $clientEmail, $clientPhone, $clientAddress, $clientCity, $clientState, $clientZip, $cardNumber, $expMonth, $expYear, $cvc, $cardLast4, $cardBrand) {
@@ -637,57 +586,31 @@ function saveCardForCustomer($clientName, $clientEmail, $clientPhone, $clientAdd
         ];
     }
     saveSavedCards($all);
+    restoreDeletedCustomer($clientName);
 }
 
 function getAutopays() {
-    global $AUTOPAY_FILE;
-    if (file_exists($AUTOPAY_FILE)) {
-        $data = json_decode(file_get_contents($AUTOPAY_FILE), true);
-        if (is_array($data)) return $data;
-    }
-    return [];
+    return storageReadDocument('autopay.json', []);
 }
 
 function saveAutopays($all) {
-    global $AUTOPAY_FILE;
-    $dir = dirname($AUTOPAY_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($AUTOPAY_FILE, json_encode($all, JSON_PRETTY_PRINT), LOCK_EX);
-    chmod($AUTOPAY_FILE, 0600);
+    storageWriteDocument('autopay.json', $all);
 }
 
 function getDeposits() {
-    global $DEPOSITS_FILE;
-    if (file_exists($DEPOSITS_FILE)) {
-        $data = json_decode(file_get_contents($DEPOSITS_FILE), true);
-        if (is_array($data)) return $data;
-    }
-    return [];
+    return storageReadDocument('deposits.json', []);
 }
 
 function saveDeposits($all) {
-    global $DEPOSITS_FILE;
-    $dir = dirname($DEPOSITS_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($DEPOSITS_FILE, json_encode($all, JSON_PRETTY_PRINT), LOCK_EX);
-    chmod($DEPOSITS_FILE, 0600);
+    storageWriteDocument('deposits.json', $all);
 }
 
 function getDisputes() {
-    global $DISPUTES_FILE;
-    if (file_exists($DISPUTES_FILE)) {
-        $data = json_decode(file_get_contents($DISPUTES_FILE), true);
-        if (is_array($data)) return $data;
-    }
-    return [];
+    return storageReadDocument('disputes.json', []);
 }
 
 function saveDisputes($all) {
-    global $DISPUTES_FILE;
-    $dir = dirname($DISPUTES_FILE);
-    if (!is_dir($dir)) mkdir($dir, 0700, true);
-    file_put_contents($DISPUTES_FILE, json_encode($all, JSON_PRETTY_PRINT), LOCK_EX);
-    chmod($DISPUTES_FILE, 0600);
+    storageWriteDocument('disputes.json', $all);
 }
 
 function squireAPI($method, $endpoint, $data = null, $token = null) {
@@ -723,6 +646,7 @@ function squireAPI($method, $endpoint, $data = null, $token = null) {
         'body' => $result['body'] ?? ['error' => 'Empty response'],
         'raw' => $result['raw'] ?? '',
         'error' => '',
+        'gatewayUnavailable' => !empty($result['gatewayUnavailable']),
     ];
 }
 
@@ -773,6 +697,17 @@ function formatPhone($phone) {
     if (strlen($digits) === 11 && $digits[0] === '1') $digits = substr($digits, 1);
     if (strlen($digits) === 10) return '(' . substr($digits, 0, 3) . ') ' . substr($digits, 3, 3) . '-' . substr($digits, 6);
     return $phone;
+}
+
+function getTransactionType($transaction) {
+    $source = strtolower(trim((string)($transaction['source'] ?? '')));
+    return !empty($transaction['subscriptionId']) || $source === 'autopay'
+        ? 'auto'
+        : 'manual';
+}
+
+function getTransactionTypeLabel($transaction) {
+    return getTransactionType($transaction) === 'auto' ? 'Auto' : 'Manual';
 }
 
 function calcNextCharge($currentDate, $frequency) {
@@ -882,6 +817,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
         $cardBrand = $tokenResult['card']['brand'] ?? 'Card';
 
         $result = processSquireCharge($payToken, $amount, $token);
+
+        if (!empty($result['gatewayUnavailable'])) {
+            http_response_code(503);
+            echo json_encode(['success' => false, 'error' => $result['body']['error']]);
+            exit;
+        }
 
         if ($result['code'] >= 200 && $result['code'] < 300) {
             $txn = [
@@ -1163,6 +1104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     // ─── Refund transaction ───
     if ($_GET['action'] === 'refund') {
         $input = json_decode(file_get_contents('php://input'), true);
+        requireTransactionActionPinAuthorization();
         $txnId = $input['id'] ?? '';
         $refundType = $input['refundType'] ?? 'full'; // 'full' or 'custom'
         $customAmount = floatval($input['customAmount'] ?? 0);
@@ -1259,16 +1201,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
 
     // ─── Verify PIN ──────────────────────────────────────
     if ($_GET['action'] === 'verify_pin') {
-        global $ADMIN_PIN;
         $input = json_decode(file_get_contents('php://input'), true);
-        $pin = $input['pin'] ?? '';
-        echo json_encode(['success' => $pin === $ADMIN_PIN]);
+        $hash = transactionActionPinHash();
+        if ($hash === '') {
+            http_response_code(503);
+            echo json_encode(['success' => false, 'error' => 'Security PIN is not configured']);
+            exit;
+        }
+
+        $now = time();
+        $lockedUntil = (int)($_SESSION['transaction_action_pin_locked_until'] ?? 0);
+        if ($lockedUntil > $now) {
+            http_response_code(429);
+            echo json_encode(['success' => false, 'error' => 'Too many incorrect attempts. Try again later.']);
+            exit;
+        }
+
+        $pin = (string)($input['pin'] ?? '');
+        if ($pin !== '' && password_verify($pin, $hash)) {
+            $_SESSION['transaction_action_pin_verified_until'] = $now + 300;
+            unset($_SESSION['transaction_action_pin_failures'], $_SESSION['transaction_action_pin_locked_until']);
+            echo json_encode(['success' => true]);
+            exit;
+        }
+
+        $failures = (int)($_SESSION['transaction_action_pin_failures'] ?? 0) + 1;
+        $_SESSION['transaction_action_pin_failures'] = $failures;
+        if ($failures >= 5) {
+            $_SESSION['transaction_action_pin_locked_until'] = $now + 900;
+            unset($_SESSION['transaction_action_pin_failures']);
+        }
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Incorrect PIN']);
         exit;
     }
 
     // ─── Update Customer Info ──────────────────────────────────
     if ($_GET['action'] === 'update_customer' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $input = json_decode(file_get_contents('php://input'), true);
+        requireTransactionActionPinAuthorization();
         $oldName = trim($input['oldName'] ?? '');
         $newName = trim($input['name'] ?? '');
         $newEmail = trim($input['email'] ?? '');
@@ -1341,18 +1312,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
 
     if ($_GET['action'] === 'delete_customer' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $input = json_decode(file_get_contents('php://input'), true);
+        requireTransactionActionPinAuthorization();
         $name = trim($input['name'] ?? '');
         if (!$name) { echo json_encode(['success' => false, 'error' => 'Name required']); exit; }
-        // Remove from saved cards
-        $cards = getSavedCards();
-        $cards = array_values(array_filter($cards, function($c) use ($name) { return strcasecmp(trim($c['clientName'] ?? ''), $name) !== 0; }));
-        saveSavedCards($cards);
-        // Remove autopay subscriptions for this customer
-        $autopays = getAutopays();
-        $autopays = array_values(array_filter($autopays, function($a) use ($name) { return strcasecmp(trim($a['clientName'] ?? ''), $name) !== 0; }));
-        saveAutopays($autopays);
-        addAuditEntry('delete_customer', $name, 'Customer deleted');
-        echo json_encode(['success' => true]);
+        $removedCards = 0;
+        storageMutateDocument('saved_cards.json', [], function($cards) use ($name, &$removedCards) {
+            $cards = is_array($cards) ? $cards : [];
+            $remaining = array_values(array_filter($cards, function($card) use ($name) {
+                return strcasecmp(trim($card['clientName'] ?? ''), $name) !== 0;
+            }));
+            $removedCards = count($cards) - count($remaining);
+            return $remaining;
+        });
+
+        $removedAutopays = 0;
+        storageMutateDocument('autopay.json', [], function($autopays) use ($name, &$removedAutopays) {
+            $autopays = is_array($autopays) ? $autopays : [];
+            $remaining = array_values(array_filter($autopays, function($autopay) use ($name) {
+                return strcasecmp(trim($autopay['clientName'] ?? ''), $name) !== 0;
+            }));
+            $removedAutopays = count($autopays) - count($remaining);
+            return $remaining;
+        });
+
+        markCustomerDeleted($name);
+        addAuditEntry('delete_customer', $name, 'Customer profile removed | Saved cards: ' . $removedCards . ' | Autopays: ' . $removedAutopays . ' | Transaction history preserved');
+        echo json_encode(['success' => true, 'removedCards' => $removedCards, 'removedAutopays' => $removedAutopays]);
         exit;
     }
 
@@ -1389,6 +1374,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
             'createdAt' => date('c'),
         ];
         saveSavedCards($cards);
+        restoreDeletedCustomer($name);
         addAuditEntry('add_customer', $name, 'Customer added | ' . $email . ' | ' . $phone);
         echo json_encode(['success' => true]);
         exit;
@@ -1522,16 +1508,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action'])) {
         $txns = getTransactions();
         $savedCards = getSavedCards();
         $autopays = getAutopays();
+        $deletedCustomerMap = array_fill_keys(getDeletedCustomerKeys(), true);
         $savedMap = [];
         foreach ($savedCards as $sc) {
-            $savedMap[strtolower(trim($sc['clientName'] ?? ''))] = $sc;
+            $key = normalizeCustomerName($sc['clientName'] ?? '');
+            if ($key === '' || isset($deletedCustomerMap[customerDeletionKey($sc['clientName'] ?? '')])) continue;
+            $savedMap[$key] = $sc;
         }
         $custMap = [];
         foreach ($txns as $t) {
             $name = trim($t['clientName'] ?? '');
             if (!$name) continue;
-            $key = strtolower($name);
-            if (isset($custMap[$key])) continue;
+            $key = normalizeCustomerName($name);
+            if (isset($deletedCustomerMap[customerDeletionKey($name)]) || isset($custMap[$key])) continue;
             $sc = $savedMap[$key] ?? null;
             $custMap[$key] = [
                 'clientName' => $name,
@@ -1548,8 +1537,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action'])) {
         }
         // Also add saved card customers not in transactions
         foreach ($savedCards as $sc) {
-            $key = strtolower(trim($sc['clientName'] ?? ''));
-            if (!$key || isset($custMap[$key])) continue;
+            $key = normalizeCustomerName($sc['clientName'] ?? '');
+            if (!$key || isset($deletedCustomerMap[customerDeletionKey($sc['clientName'] ?? '')]) || isset($custMap[$key])) continue;
             $custMap[$key] = [
                 'clientName' => trim($sc['clientName'] ?? ''),
                 'clientEmail' => $sc['clientEmail'] ?? '',
@@ -1568,8 +1557,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action'])) {
             if (($ap['status'] ?? '') === 'cancelled') continue;
             $name = trim($ap['clientName'] ?? '');
             if (!$name) continue;
-            $key = strtolower($name);
-            if (isset($custMap[$key])) continue;
+            $key = normalizeCustomerName($name);
+            if (isset($deletedCustomerMap[customerDeletionKey($name)]) || isset($custMap[$key])) continue;
             $custMap[$key] = [
                 'clientName' => $name,
                 'clientEmail' => $ap['clientEmail'] ?? '',
@@ -1799,7 +1788,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'export_csv' && $isAdminAuth) 
         header('Content-Type: text/csv');
         header('Content-Disposition: attachment; filename="transactions_' . date('Y-m-d') . '.csv"');
         $out = fopen('php://output', 'w');
-        fputcsv($out, ['Date', 'Transaction ID', 'Client', 'Phone', 'Email', 'Description', 'Card', 'Amount', 'Source', 'Status']);
+        fputcsv($out, ['Date', 'Transaction ID', 'Client', 'Phone', 'Email', 'Description', 'Card', 'Amount', 'Type', 'Status']);
         $txns = getTransactions();
         usort($txns, function($a, $b) { return strcmp($b['timestamp'] ?? '', $a['timestamp'] ?? ''); });
         foreach ($txns as $t) {
@@ -1812,7 +1801,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'export_csv' && $isAdminAuth) 
                 $t['description'] ?? '',
                 ($t['cardBrand'] ?? '') . ' ****' . ($t['cardLast4'] ?? ''),
                 number_format($t['amount'] ?? 0, 2, '.', ''),
-                $t['source'] ?? 'manual',
+                getTransactionTypeLabel($t),
                 $t['status'] ?? '',
             ]);
         }
@@ -1865,6 +1854,32 @@ if (isset($_GET['action']) && $_GET['action'] === 'export_csv' && $isAdminAuth) 
                 $c['count'],
                 number_format($c['total'], 2, '.', ''),
                 $c['apStatus'] === 'none' ? '' : $c['apStatus'],
+            ]);
+        }
+        fclose($out);
+        exit;
+    }
+    if ($type === 'sessions') {
+        header('Content-Type: text/csv');
+        header('Content-Disposition: attachment; filename="sessions_' . date('Y-m-d') . '.csv"');
+        $out = fopen('php://output', 'w');
+        fputcsv($out, ['Status', 'IP Address', 'City', 'Region', 'Country', 'ISP / Network', 'Device', 'Browser', 'OS', 'Login Time', 'Last Active', 'Page Views']);
+        $sessions = getActiveSessions();
+        usort($sessions, fn($a, $b) => strtotime($b['lastActive'] ?? '') - strtotime($a['lastActive'] ?? ''));
+        foreach ($sessions as $s) {
+            fputcsv($out, [
+                $s['status'] ?? '',
+                $s['ip'] ?? '',
+                $s['city'] ?? '',
+                $s['region'] ?? '',
+                $s['country'] ?? '',
+                $s['isp'] ?? '',
+                $s['device'] ?? '',
+                $s['browser'] ?? '',
+                $s['os'] ?? '',
+                !empty($s['loginTime']) ? date('Y-m-d H:i', strtotime($s['loginTime'])) : '',
+                !empty($s['lastActive']) ? date('Y-m-d H:i', strtotime($s['lastActive'])) : '',
+                $s['pageViews'] ?? 0,
             ]);
         }
         fclose($out);
@@ -1959,6 +1974,7 @@ $allTxns = getTransactions();
 $allAutopays = getAutopays();
 $allDeposits = getDeposits();
 $allDisputes = getDisputes();
+$deletedCustomerMap = array_fill_keys(getDeletedCustomerKeys(), true);
 
 // Sort deposits by date descending
 usort($allDeposits, function($a, $b) { return strcmp($b['date'] ?? '', $a['date'] ?? ''); });
@@ -1981,6 +1997,7 @@ $weekTotal = 0; $weekCount = 0;
 $monthTotal = 0; $monthCount = 0;
 $allTotal = 0; $allCount = 0;
 $approvedCount = 0; $declinedCount = 0;
+$balanceTotal = 0; $balanceApprovedCount = 0;
 $customers = [];
 
 foreach ($allTxns as $t) {
@@ -1990,11 +2007,13 @@ foreach ($allTxns as $t) {
     $isApproved = ($t['status'] ?? '') === 'approved';
     if ($isApproved) {
         $approvedCount++; $allTotal += $amt; $allCount++;
+        if (empty($t['recoveryBatch'])) { $balanceTotal += $amt; $balanceApprovedCount++; }
         if ($tDate === $todayStr) { $todayTotal += $amt; $todayCount++; }
         if ($tDate >= $weekStart) { $weekTotal += $amt; $weekCount++; }
         if ($tMonth === $monthStr) { $monthTotal += $amt; $monthCount++; }
     } else { $declinedCount++; }
     $cName = trim($t['clientName'] ?? '') ?: 'Walk-in';
+    if (isset($deletedCustomerMap[customerDeletionKey($cName)])) continue;
     if (!isset($customers[$cName])) $customers[$cName] = ['name' => $cName, 'email' => '', 'phone' => '', 'address' => '', 'city' => '', 'state' => '', 'zip' => '', 'total' => 0, 'count' => 0, 'lastCharge' => '', 'cardLast4' => '', 'cardBrand' => ''];
     if ($isApproved) { $customers[$cName]['total'] += $amt; $customers[$cName]['count']++; }
     $customers[$cName]['lastCharge'] = $t['timestamp'] ?? '';
@@ -2009,27 +2028,34 @@ foreach ($allTxns as $t) {
 $avgCharge = $allCount > 0 ? $allTotal / $allCount : 0;
 
 // Compute pending balance & fees
-// Historical revenue baseline: $2,693.63 as of Jul 7, 2026
-// This accounts for revenue processed before the tracking system was set up
-$historicalBaseline = 2693.63;
-$baselineRevenue = 1504.70;  // allTotal at time of baseline
-$baselineDeposits = 5428.46; // totalDeposits at time of baseline
-$baselineFees = 1504.70 * 0.029 + 88 * 1.23; // fees at time of baseline
-$newRevenue = max(0, $allTotal - $baselineRevenue);
-$newDeposits = max(0, $totalDeposits - $baselineDeposits);
+// Recovered historical records remain visible without changing the live settlement balance.
+$historicalBaseline = 1324.35;
+$baselineRevenue = 6459.67;
+$baselineDeposits = 10246.80;
 $feePercent = 0.029; // 2.9%
 $feePerTxn = 1.23;  // $1.23 per transaction
-$totalPercentFee = $allTotal * $feePercent;
-$totalTxnFee = $approvedCount * $feePerTxn;
-$totalFees = $totalPercentFee + $totalTxnFee;
-$newFees = max(0, $totalFees - $baselineFees);
+$baselineFees = $baselineRevenue * $feePercent + 181 * $feePerTxn;
+$newRevenue = max(0, $balanceTotal - $baselineRevenue);
+$newDeposits = max(0, $totalDeposits - $baselineDeposits);
+$balancePercentFee = $balanceTotal * $feePercent;
+$balanceTxnFee = $balanceApprovedCount * $feePerTxn;
+$newFees = max(0, $balancePercentFee + $balanceTxnFee - $baselineFees);
 $netPending = $historicalBaseline + $newRevenue - $newDeposits - $newFees;
+$displayProcessedBaseline = 11571.15;
+$displayProcessedRevenueBaseline = 6459.67;
+$displayProcessed = $displayProcessedBaseline + max(0, $balanceTotal - $displayProcessedRevenueBaseline);
+$displayTransactionCountBaseline = 238;
+$displayTransactionCountRevenueBaseline = 181;
+$displayTransactionCount = $displayTransactionCountBaseline + max(0, $balanceApprovedCount - $displayTransactionCountRevenueBaseline);
+$totalPercentFee = $displayProcessed * $feePercent;
+$totalTxnFee = $displayTransactionCount * $feePerTxn;
+$totalFees = $totalPercentFee + $totalTxnFee;
 
 // Link autopay subscriptions to customers (and add autopay-only customers)
 foreach ($allAutopays as $ap) {
     if (($ap['status'] ?? '') === 'cancelled') continue;
     $apName = trim($ap['clientName'] ?? '');
-    if (!$apName) continue;
+    if (!$apName || isset($deletedCustomerMap[customerDeletionKey($apName)])) continue;
     if (!isset($customers[$apName])) {
         $customers[$apName] = ['name' => $apName, 'email' => $ap['clientEmail'] ?? '', 'phone' => $ap['clientPhone'] ?? '', 'address' => $ap['clientAddress'] ?? '', 'city' => $ap['clientCity'] ?? '', 'state' => $ap['clientState'] ?? '', 'zip' => $ap['clientZip'] ?? '', 'total' => 0, 'count' => 0, 'lastCharge' => '', 'cardLast4' => $ap['cardLast4'] ?? '', 'cardBrand' => $ap['cardBrand'] ?? ''];
     }
@@ -2491,15 +2517,17 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
             <?php if (empty($apCalendar)): ?>
                 <div class="empty"><div class="icon">&#128197;</div><p>No upcoming autopay charges scheduled.</p></div>
             <?php else: ?>
-                <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; margin-bottom:18px;">
-                    <table style="width:100%; border-collapse:collapse; font-size:13px;" id="scheduleTable">
+                <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; overflow-x:auto; margin-bottom:18px;">
+                    <table style="width:100%; min-width:1450px; border-collapse:collapse; font-size:13px;" id="scheduleTable">
                         <thead>
                             <tr style="background:#f8fafc; border-bottom:2px solid #e2e8f0;">
-                                <th style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px;">Date</th>
-                                <th style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px;">Customer</th>
-                                <th style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px;">Phone</th>
-                                <th style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px;">Email</th>
-                                <th style="padding:10px 16px; text-align:right; font-weight:700; color:#1e293b; font-size:12px;">Amount</th>
+                                <th data-sort-col="0" aria-sort="ascending" onclick="sortScheduleTable(0)" style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px; cursor:pointer; user-select:none;">Date<span class="schedule-sort-indicator"> ▲</span></th>
+                                <th data-sort-col="1" aria-sort="none" onclick="sortScheduleTable(1)" style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px; cursor:pointer; user-select:none;">Customer<span class="schedule-sort-indicator"></span></th>
+                                <th data-sort-col="2" aria-sort="none" onclick="sortScheduleTable(2)" style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px; cursor:pointer; user-select:none;">Phone<span class="schedule-sort-indicator"></span></th>
+                                <th data-sort-col="3" aria-sort="none" onclick="sortScheduleTable(3)" style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px; cursor:pointer; user-select:none;">Email<span class="schedule-sort-indicator"></span></th>
+                                <th data-sort-col="4" aria-sort="none" onclick="sortScheduleTable(4)" style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px; cursor:pointer; user-select:none;">Address<span class="schedule-sort-indicator"></span></th>
+                                <th data-sort-col="5" aria-sort="none" onclick="sortScheduleTable(5)" style="padding:10px 16px; text-align:left; font-weight:700; color:#1e293b; font-size:12px; cursor:pointer; user-select:none;">Card Last 4<span class="schedule-sort-indicator"></span></th>
+                                <th data-sort-col="6" aria-sort="none" onclick="sortScheduleTable(6)" style="padding:10px 16px; text-align:right; font-weight:700; color:#1e293b; font-size:12px; cursor:pointer; user-select:none;">Amount<span class="schedule-sort-indicator"></span></th>
                                 <th style="padding:10px 16px; text-align:center; font-weight:700; color:#1e293b; font-size:12px;">Action</th>
                             </tr>
                         </thead>
@@ -2508,16 +2536,28 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                             $dateLabel = date('m/d', strtotime($day['date']));
                         ?>
                             <?php foreach ($day['customers'] as $i => $ap): ?>
-                            <tr style="border-bottom:1px solid #f1f5f9;" data-sched-date="<?= $day['date'] ?>">
+                            <tr class="schedule-row" style="border-bottom:1px solid #f1f5f9;" data-sched-date="<?= $day['date'] ?>" data-sched-amount="<?= floatval($ap['amount'] ?? 0) ?>">
                                 <td style="padding:9px 16px; color:#475569; white-space:nowrap;"><?= $dateLabel ?></td>
                                 <td style="padding:9px 16px; color:#1e293b; font-weight:500;"><?= htmlspecialchars($ap['clientName'] ?? 'Unknown') ?></td>
                                 <td style="padding:9px 16px; font-size:12px;"><?php $sph = $ap['clientPhone'] ?? ''; echo $sph ? '<a href="tel:' . htmlspecialchars(preg_replace('/[^0-9+]/', '', $sph)) . '" style="color:#2563eb;text-decoration:none;">' . htmlspecialchars(formatPhone($sph)) . '</a>' : ''; ?></td>
                                 <td style="padding:9px 16px; font-size:12px;"><?php $sem = $ap['clientEmail'] ?? ''; echo $sem ? '<a href="mailto:' . htmlspecialchars($sem) . '" style="color:#2563eb;text-decoration:none;">' . htmlspecialchars($sem) . '</a>' : ''; ?></td>
+                                <td style="padding:9px 16px; font-size:12px; color:#475569;"><?php
+                                    $street = trim((string)($ap['clientAddress'] ?? ''));
+                                    $city = trim((string)($ap['clientCity'] ?? ''));
+                                    $stateZip = trim(trim((string)($ap['clientState'] ?? '')) . ' ' . trim((string)($ap['clientZip'] ?? '')));
+                                    $locality = implode(', ', array_filter([$city, $stateZip]));
+                                    $address = implode(', ', array_filter([$street, $locality]));
+                                    echo $address !== '' ? htmlspecialchars($address) : '<span style="color:#dc2626;font-weight:600;">Missing</span>';
+                                ?></td>
+                                <td style="padding:9px 16px; font-size:12px; color:#475569; white-space:nowrap;"><?php
+                                    $last4 = substr(preg_replace('/[^0-9]/', '', (string)($ap['cardLast4'] ?? '')), -4);
+                                    $brand = trim((string)($ap['cardBrand'] ?? '')) ?: 'Card';
+                                    echo strlen($last4) === 4 ? htmlspecialchars($brand . ' ****' . $last4) : '<span style="color:#dc2626;font-weight:600;">Missing</span>';
+                                ?></td>
                                 <td style="padding:9px 16px; color:#1e293b; font-weight:600; text-align:right;">$<?= number_format($ap['amount'] ?? 0, 2) ?></td>
                                 <td style="padding:9px 16px; text-align:center;"><button class="edit-btn" style="font-size:11px; padding:4px 10px;" onclick="editScheduleItem('<?= htmlspecialchars($ap['id'] ?? '') ?>', '<?= htmlspecialchars($ap['clientName'] ?? '') ?>', <?= floatval($ap['amount'] ?? 0) ?>, '<?= $day['date'] ?>')">Edit</button></td>
                             </tr>
                             <?php endforeach; ?>
-                            <tr style="border-bottom:2px solid #e2e8f0; height:4px;" data-sched-date="<?= $day['date'] ?>"><td colspan="6"></td></tr>
                         <?php endforeach; ?>
                         </tbody>
                     </table>
@@ -2542,8 +2582,10 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                 <div class="stat-card green"><div class="stat-label">Total Sales</div><div class="stat-value"><?= $approvedCount ?></div><div class="stat-sub">approved</div></div>
                 <div class="stat-card red"><div class="stat-label">Declined</div><div class="stat-value"><?= $declinedCount ?></div><div class="stat-sub">failed</div></div>
                 <div class="stat-card blue"><div class="stat-label">Customers</div><div class="stat-value"><?= count($customers) ?></div><div class="stat-sub">unique</div></div>
-                <div class="stat-card purple"><div class="stat-label">Total Autopay</div><div class="stat-value"><?= $activeAP + $pausedAP + $failedAP ?></div><div class="stat-sub"><?= $activeAP ?> active · <?= $pausedAP ?> paused · <?= $failedAP ?> failed</div></div>
-                <div class="stat-card purple"><div class="stat-label">Autopay Revenue</div><div class="stat-value">$<?= number_format($apRevenue, 2) ?></div><div class="stat-sub">collected</div></div>
+                <div class="stat-card purple"><div class="stat-label">Active Autopays</div><div class="stat-value"><?= $activeAP ?></div><div class="stat-sub"><?= $pausedAP ?> paused · <?= $failedAP ?> failed</div></div>
+                <div class="stat-card blue"><div class="stat-label">Monthly Forecast</div><div class="stat-value">$<?= number_format($monthlyForecast, 2) ?></div><div class="stat-sub">active autopays</div></div>
+                <div class="stat-card amber"><div class="stat-label">Next 60 Days</div><div class="stat-value">$<?= number_format($totalScheduled60, 2) ?></div><div class="stat-sub">scheduled</div></div>
+                <div class="stat-card purple"><div class="stat-label">Autopay Collected</div><div class="stat-value">$<?= number_format($apRevenue, 2) ?></div><div class="stat-sub">approved history</div></div>
             </div>
             <div class="card">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
@@ -2560,9 +2602,10 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                 <th style="cursor:pointer;" onclick="sortDashTable(1)">Client</th>
                                 <th style="cursor:pointer;" onclick="sortDashTable(2)">Phone</th>
                                 <th style="cursor:pointer;" onclick="sortDashTable(3)">Email</th>
-                                <th style="cursor:pointer;" onclick="sortDashTable(4)">Amount</th>
-                                <th style="cursor:pointer;" onclick="sortDashTable(5)">Source</th>
-                                <th style="cursor:pointer;" onclick="sortDashTable(6)">Status</th>
+                                <th style="cursor:pointer;" onclick="sortDashTable(4)">Address</th>
+                                <th style="cursor:pointer;" onclick="sortDashTable(5)">Amount</th>
+                                <th style="cursor:pointer;" onclick="sortDashTable(6)">Type</th>
+                                <th style="cursor:pointer;" onclick="sortDashTable(7)">Status</th>
                                 <th>Action</th>
                             </tr></thead>
                             <tbody>
@@ -2579,10 +2622,11 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                     <td style="color:#1a1a2e; font-weight:500;"><?= htmlspecialchars($t['clientName'] ?: 'Walk-in') ?></td>
                                     <td style="font-size:12px;"><?php if (!empty($t['clientPhone'])): ?><a href="tel:<?= htmlspecialchars(preg_replace('/[^0-9+]/', '', $t['clientPhone'])) ?>" style="color:#2563eb; text-decoration:none;"><?= htmlspecialchars(formatPhone($t['clientPhone'])) ?></a><?php endif; ?></td>
                                     <td style="font-size:12px;"><?php if (!empty($t['clientEmail'])): ?><a href="mailto:<?= htmlspecialchars($t['clientEmail']) ?>" style="color:#2563eb; text-decoration:none;"><?= htmlspecialchars($t['clientEmail']) ?></a><?php endif; ?></td>
+                                    <td style="font-size:12px; color:#6b7280;"><?php $rtAddr = array_filter([$t['clientAddress'] ?? '', $t['clientCity'] ?? '', (($t['clientState'] ?? '') ? ($t['clientState'] . ' ' . ($t['clientZip'] ?? '')) : ($t['clientZip'] ?? ''))]); echo $rtAddr ? htmlspecialchars(implode(', ', $rtAddr)) : '—'; ?></td>
                                     <td style="color:#1a1a2e; font-weight:600;">$<?= number_format($t['amount'], 2) ?></td>
-                                    <td><?php $src = $t['source'] ?? 'manual'; if ($src === 'autopay'): ?><span class="badge badge-autopay">Autopay</span><?php elseif ($src === 'JJ'): ?><span class="badge" style="background:#7c3aed; color:#fff;">JJ</span><?php else: ?>Manual<?php endif; ?></td>
+                                    <td><?php if (getTransactionType($t) === 'auto'): ?><span class="badge badge-autopay">Auto</span><?php else: ?>Manual<?php endif; ?></td>
                                     <td><span class="badge badge-<?= $t['status'] ?>"><?= ucfirst($t['status']) ?></span></td>
-                                    <td><button class="edit-btn" style="font-size:11px; padding:4px 10px;" onclick='openTxnEditModal(<?= $txnJson ?>)'>Edit</button></td>
+                                    <td><button class="edit-btn" style="font-size:11px; padding:4px 10px;" onclick='promptTxnPin(<?= $txnJson ?>)'>Edit</button></td>
                                 </tr>
                             <?php endforeach; ?>
                             </tbody>
@@ -2603,8 +2647,10 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                 <?php
                 // Get all active autopay subs sorted by nextCharge date
                 $upcomingSubs = [];
-                foreach ($autopays as $ap) {
-                    if ($ap['status'] === 'active' && !empty($ap['nextCharge'])) {
+                foreach ($allAutopays as $ap) {
+                    $nextCharge = trim((string)($ap['nextCharge'] ?? $ap['nextChargeDate'] ?? ''));
+                    if (($ap['status'] ?? '') === 'active' && $nextCharge !== '') {
+                        $ap['nextCharge'] = $nextCharge;
                         $upcomingSubs[] = $ap;
                     }
                 }
@@ -2664,6 +2710,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                     <th style="padding:10px 14px; text-align:left; font-weight:700; color:#1e293b; font-size:12px;">Customer</th>
                                     <th style="padding:10px 14px; text-align:left; font-weight:700; color:#1e293b; font-size:12px;">Phone</th>
                                     <th style="padding:10px 14px; text-align:left; font-weight:700; color:#1e293b; font-size:12px;">Email</th>
+                                    <th style="padding:10px 14px; text-align:left; font-weight:700; color:#1e293b; font-size:12px;">Address</th>
                                     <th style="padding:10px 14px; text-align:right; font-weight:700; color:#1e293b; font-size:12px;">Amount</th>
                                     <th style="padding:10px 14px; text-align:center; font-weight:700; color:#1e293b; font-size:12px;">Frequency</th>
                                     <th style="padding:10px 14px; text-align:center; font-weight:700; color:#1e293b; font-size:12px;">Card</th>
@@ -2694,6 +2741,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                     <td style="padding:10px 14px; color:#1e293b; font-weight:600;"><?= htmlspecialchars($us['clientName'] ?? 'Unknown') ?></td>
                                     <td style="padding:10px 14px; font-size:12px;"><?php $uph = $us['clientPhone'] ?? ''; echo $uph ? '<a href="tel:' . htmlspecialchars(preg_replace('/[^0-9+]/', '', $uph)) . '" style="color:#2563eb;text-decoration:none;">' . htmlspecialchars(formatPhone($uph)) . '</a>' : '-'; ?></td>
                                     <td style="padding:10px 14px; font-size:12px;"><?php $uem = $us['clientEmail'] ?? ''; echo $uem ? '<a href="mailto:' . htmlspecialchars($uem) . '" style="color:#2563eb;text-decoration:none;">' . htmlspecialchars($uem) . '</a>' : '-'; ?></td>
+                                    <td style="padding:10px 14px; font-size:12px; color:#6b7280;"><?php $usAddr = array_filter([$us['clientAddress'] ?? '', $us['clientCity'] ?? '', (($us['clientState'] ?? '') ? ($us['clientState'] . ' ' . ($us['clientZip'] ?? '')) : ($us['clientZip'] ?? ''))]); echo $usAddr ? htmlspecialchars(implode(', ', $usAddr)) : '<span style="color:#ef4444;">Missing</span>'; ?></td>
                                     <td style="padding:10px 14px; color:#059669; font-weight:700; text-align:right;">$<?= number_format($us['amount'] ?? 0, 2) ?></td>
                                     <td style="padding:10px 14px; text-align:center;">
                                         <span style="background:#e0e7ff; color:#4338ca; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:500;"><?= ucfirst($us['frequency'] ?? 'monthly') ?></span>
@@ -2806,7 +2854,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
             <div class="toolbar">
                 <input type="text" id="txnSearch" placeholder="Search by client, description, ID..." oninput="filterTxns()">
                 <select id="txnFilter" onchange="filterTxns()"><option value="all">All Status</option><option value="approved">Approved</option><option value="declined">Declined</option><option value="refunded">Refunded</option></select>
-                <select id="txnSourceFilter" onchange="filterTxns()"><option value="all">All Sources</option><option value="manual">Manual</option><option value="autopay">Autopay</option><option value="JJ">JJ</option></select>
+                <select id="txnSourceFilter" onchange="filterTxns()"><option value="all">All Types</option><option value="manual">Manual</option><option value="auto">Auto</option></select>
                 <select id="txnDateFilter" onchange="filterTxns()"><option value="all">All Time</option><option value="today">Today</option><option value="week">This Week</option><option value="month">This Month</option></select>
                 <a href="?action=export_csv&type=transactions" class="btn-primary" style="display:inline-block; font-size:12px; padding:7px 14px; text-decoration:none; white-space:nowrap;">Export CSV</a>
             </div>
@@ -2816,7 +2864,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                 <?php else: ?>
                     <div class="table-wrap">
                         <table id="txnTable">
-                            <thead><tr><th>Date</th><th>ID</th><th>Client</th><th>Phone</th><th>Email</th><th>Address</th><th>Card</th><th>Amount</th><th>Source</th><th>Status</th><th>Action</th></tr></thead>
+                            <thead><tr><th>Date</th><th>ID</th><th>Client</th><th>Phone</th><th>Email</th><th>Address</th><th>Card</th><th>Amount</th><th>Type</th><th>Status</th><th>Action</th></tr></thead>
                             <tbody>
                             <?php foreach ($allTxns as $t):
                                 $txnEditJson = htmlspecialchars(json_encode([
@@ -2826,7 +2874,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                     'cardBrand' => $t['cardBrand'] ?? '', 'cardLast4' => $t['cardLast4'] ?? '',
                                 ]), ENT_QUOTES);
                             ?>
-                                <tr data-status="<?= $t['status'] ?>" data-source="<?= $t['source'] ?? 'manual' ?>" data-date="<?= substr($t['timestamp'] ?? '', 0, 10) ?>" data-search="<?= strtolower(($t['clientName'] ?? '') . ' ' . ($t['description'] ?? '') . ' ' . ($t['id'] ?? '') . ' ' . ($t['clientEmail'] ?? '')) ?>">
+                                <tr data-status="<?= $t['status'] ?>" data-source="<?= getTransactionType($t) ?>" data-date="<?= substr($t['timestamp'] ?? '', 0, 10) ?>" data-search="<?= strtolower(($t['clientName'] ?? '') . ' ' . ($t['description'] ?? '') . ' ' . ($t['id'] ?? '') . ' ' . ($t['clientEmail'] ?? '')) ?>">
                                     <td><?= date('M j, g:ia', strtotime($t['timestamp'] ?? 'now')) ?></td>
                                     <td style="font-family: monospace; font-size: 10px; color: #6b7080;"><?= htmlspecialchars(substr($t['id'] ?? '', 0, 14)) ?></td>
                                     <td style="color:#1a1a2e; font-weight:500;"><?= htmlspecialchars($t['clientName'] ?: 'Walk-in') ?></td>
@@ -2838,9 +2886,9 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                     ?></td>
                                     <td style="font-size: 11px;"><?= !empty($t['cardLast4']) ? htmlspecialchars(($t['cardBrand'] ?? 'Card') . ' ****' . $t['cardLast4']) : '<span style="color:#9ca3af;">No card</span>' ?></td>
                                     <td style="color:#1a1a2e; font-weight:600;">$<?= number_format($t['amount'], 2) ?></td>
-                                    <td><?php $src2 = $t['source'] ?? 'manual'; if ($src2 === 'autopay'): ?><span class="badge badge-autopay">Autopay</span><?php elseif ($src2 === 'JJ'): ?><span class="badge" style="background:#7c3aed; color:#fff;">JJ</span><?php else: ?>Manual<?php endif; ?></td>
+                                    <td><?php if (getTransactionType($t) === 'auto'): ?><span class="badge badge-autopay">Auto</span><?php else: ?>Manual<?php endif; ?></td>
                                     <td><span class="badge badge-<?= $t['status'] ?>"><?= ucfirst($t['status']) ?></span></td>
-                                    <td><button class="edit-btn" style="font-size:11px; padding:4px 10px;" onclick='openTxnEditModal(<?= $txnEditJson ?>)'>Edit</button></td>
+                                    <td><button class="edit-btn" style="font-size:11px; padding:4px 10px;" onclick='promptTxnPin(<?= $txnEditJson ?>)'>Edit</button></td>
                                 </tr>
                             <?php endforeach; ?>
                             </tbody>
@@ -2860,7 +2908,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                 <div class="card" style="padding: 0; overflow: hidden;">
                     <div class="table-wrap">
                         <table class="cust-list-table" id="customerTable">
-                            <thead><tr><th>Next Charge</th><th>Customer</th><th>Email</th><th>Phone</th><th>Address</th><th>Card</th><th>Amount</th><th style="cursor:pointer;" onclick="sortCustByDate()">Last Charge <span id="sortArrow">&#9662;</span></th><th>Charges</th><th>Autopay</th><th></th></tr></thead>
+                            <thead><tr><th>Next Charge</th><th>Customer</th><th>Email</th><th>Phone</th><th>Address</th><th>Card</th><th>Total Charged</th><th style="cursor:pointer;" onclick="sortCustByDate()">Last Charge <span id="sortArrow">&#9662;</span></th><th>Charges</th><th>Autopay</th><th></th></tr></thead>
                             <tbody>
                             <?php foreach ($customers as $c): ?>
                                 <?php
@@ -2886,11 +2934,10 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                 ?>
                                 <tr data-search="<?= strtolower($c['name'] . ' ' . ($c['email'] ?? '') . ' ' . ($c['phone'] ?? '')) ?>" data-date="<?= $c['lastCharge'] ?? '' ?>">
                                     <?php
-                                    // Get active autopay amount and next charge (computed early for column order)
-                                    $apAmount = 0; $apNextDate = '';
+                                    // Get the earliest active autopay charge date.
+                                    $apNextDate = '';
                                     foreach ($custAPs as $cap) {
                                         if ($cap['status'] === 'active') {
-                                            $apAmount += floatval($cap['amount'] ?? 0);
                                             if (empty($apNextDate) || ($cap['nextCharge'] ?? '') < $apNextDate) {
                                                 $apNextDate = $cap['nextCharge'] ?? '';
                                             }
@@ -2903,7 +2950,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                     <td class="clt-contact"><?php $ph = $c['phone'] ?? ''; echo $ph ? '<a href="tel:' . htmlspecialchars(preg_replace('/[^0-9+]/', '', $ph)) . '" style="color:#2563eb;text-decoration:none;">' . htmlspecialchars(formatPhone($ph)) . '</a>' : '—'; ?></td>
                                     <td style="font-size:12px; color:#6b7280;"><?php $addrParts2 = array_filter([$c['address'] ?? '', $c['city'] ?? '', (($c['state'] ?? '') ? ($c['state'] . ' ' . ($c['zip'] ?? '')) : ($c['zip'] ?? ''))]); echo $addrParts2 ? htmlspecialchars(implode(', ', $addrParts2)) : '—'; ?></td>
                                     <td style="font-size:11px;"><?= !empty($c['cardLast4']) ? htmlspecialchars(($c['cardBrand'] ?? 'Card') . ' ****' . $c['cardLast4']) : '<span style="color:#9ca3af;">No card</span>' ?></td>
-                                    <td style="font-weight:600; color:#7c3aed;"><?= $apAmount > 0 ? '$' . number_format($apAmount, 2) : '—' ?></td>
+                                    <td style="font-weight:600; color:#7c3aed;"><?= ($c['count'] ?? 0) > 0 ? '$' . number_format($c['total'] ?? 0, 2) : '—' ?></td>
                                     <td style="font-size: 12px; color: #6b7280;"><?= $c['lastCharge'] ? date('M j, Y', strtotime($c['lastCharge'])) : '—' ?></td>
                                     <td style="font-weight: 600; color: #2563eb;"><?= $c['count'] ?></td>
                                     <td><span class="ap-badge <?= $custAPStatus ?>"><?= $custAPLabel ?></span></td>
@@ -3234,8 +3281,8 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                     <div style="font-size:14px; font-weight:700; color:#1e293b; margin-bottom:14px;">Account Summary</div>
                     <table style="width:100%; border-collapse:collapse;">
                         <tr style="border-bottom:1px solid #f1f5f9;">
-                            <td style="padding:8px 0; font-size:13px; color:#475569;">Total Processed (<?= $approvedCount ?> payments)</td>
-                            <td style="padding:8px 0; font-size:13px; font-weight:600; color:#1e293b; text-align:right;">$<?= number_format($allTotal, 2) ?></td>
+                            <td style="padding:8px 0; font-size:13px; color:#475569;">Total Processed</td>
+                            <td style="padding:8px 0; font-size:13px; font-weight:600; color:#1e293b; text-align:right;">$<?= number_format($displayProcessed, 2) ?></td>
                         </tr>
                         <tr style="border-bottom:1px solid #f1f5f9;">
                             <td style="padding:8px 0; font-size:13px; color:#475569;">Total Deposited</td>
@@ -3246,7 +3293,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                             <td style="padding:8px 0; font-size:13px; font-weight:600; color:#dc2626; text-align:right;">- $<?= number_format($totalPercentFee, 2) ?></td>
                         </tr>
                         <tr style="border-bottom:1px solid #f1f5f9;">
-                            <td style="padding:8px 0; font-size:13px; color:#94a3b8;">Transaction Fees ($1.23 × <?= $approvedCount ?>)</td>
+                            <td style="padding:8px 0; font-size:13px; color:#94a3b8;">Transaction Fees ($1.23 × <?= $displayTransactionCount ?>)</td>
                             <td style="padding:8px 0; font-size:13px; font-weight:600; color:#dc2626; text-align:right;">- $<?= number_format($totalTxnFee, 2) ?></td>
                         </tr>
                         <tr>
@@ -3386,8 +3433,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
             <?php
             $loanGoal = 75000;
             $loanAmount = 25000;
-            // Total processed = everything deposited (real processed volume) + new approved charges not yet deposited
-            $processedTotal = $totalDeposits + $newRevenue;
+            $processedTotal = $displayProcessed;
             $progressPercent = min(100, ($processedTotal / $loanGoal) * 100);
             $remaining = max(0, $loanGoal - $processedTotal);
             $loanUnlocked = $processedTotal >= $loanGoal;
@@ -3445,6 +3491,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                     </div>
                     <div style="display:flex; gap:8px;">
                         <button onclick="refreshSessions()" style="background:#f3f4f6; color:#374151; border:none; padding:8px 14px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;">↻ Refresh</button>
+                        <a href="?action=export_csv&type=sessions" style="background:#eef2ff; color:#4338ca; border:1px solid #c7d2fe; padding:8px 14px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; text-decoration:none;">Export CSV</a>
                         <button onclick="kickAllSessions()" style="background:#fef2f2; color:#dc2626; border:1px solid #fecaca; padding:8px 14px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;">⛔ Kick All Others</button>
                         <button onclick="clearSessionHistory()" style="background:#fff7ed; color:#ea580c; border:1px solid #fed7aa; padding:8px 14px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;">🗑 Clear History</button>
                     </div>
@@ -3524,8 +3571,8 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                         elseif ($t['status'] === 'declined') { $logIcon = '&#10007;'; $logColor = '#dc2626'; $logLabel = 'DECLINED'; }
                         elseif ($t['status'] === 'refunded') { $logIcon = '&#8634;'; $logColor = '#d97706'; $logLabel = 'REFUNDED'; }
                         else { $logLabel = strtoupper($t['status'] ?? 'UNKNOWN'); }
-                        $logSrc = $t['source'] ?? 'manual';
-                        $logSource = $logSrc === 'autopay' ? 'Autopay' : ($logSrc === 'JJ' ? 'JJ' : 'Manual');
+                        $logType = getTransactionType($t);
+                        $logTypeLabel = getTransactionTypeLabel($t);
                         ?>
                         <div style="display:flex; align-items:flex-start; gap:12px; padding:12px 0; border-bottom:1px solid #f3f4f6;">
                             <div style="font-size:16px; color:<?= $logColor ?>; min-width:22px; text-align:center; margin-top:2px;"><?= $logIcon ?></div>
@@ -3534,7 +3581,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                     <span style="font-size:13px; font-weight:700; color:<?= $logColor ?>;"><?= $logLabel ?></span>
                                     <span style="font-size:13px; font-weight:600; color:#1a1a2e;"><?= htmlspecialchars($t['clientName'] ?: 'Walk-in') ?></span>
                                     <span style="font-size:13px; font-weight:700; color:#1a1a2e;">$<?= number_format($t['amount'], 2) ?></span>
-                                    <?php if ($logSrc === 'JJ'): ?><span class="badge" style="background:#7c3aed; color:#fff; font-size:10px; padding:2px 8px;"><?= $logSource ?></span><?php elseif ($logSrc === 'autopay'): ?><span class="badge badge-autopay" style="font-size:10px; padding:2px 8px;"><?= $logSource ?></span><?php else: ?><span class="badge badge-approved" style="font-size:10px; padding:2px 8px;"><?= $logSource ?></span><?php endif; ?>
+                                    <?php if ($logType === 'auto'): ?><span class="badge badge-autopay" style="font-size:10px; padding:2px 8px;"><?= $logTypeLabel ?></span><?php else: ?><span class="badge badge-approved" style="font-size:10px; padding:2px 8px;"><?= $logTypeLabel ?></span><?php endif; ?>
                                 </div>
                                 <div style="font-size:12px; color:#9ca3af; margin-top:3px;">
                                     <?= date('M j, Y g:ia', strtotime($t['timestamp'] ?? 'now')) ?>
@@ -3627,6 +3674,53 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                 <?php endif; ?>
             </div>
         </div>
+
+<!-- Add Customer Modal -->
+<div class="modal-overlay" id="addCustomerModal" onclick="if(event.target===this)closeAddCustomerModal()">
+    <div class="modal" style="max-width:500px;">
+        <div class="modal-header">
+            <h3>Add New Customer</h3>
+            <button class="modal-close" onclick="closeAddCustomerModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>Full Name *</label>
+                <input type="text" id="addCustName" placeholder="John Smith">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="addCustEmail" placeholder="john@email.com">
+                </div>
+                <div class="form-group">
+                    <label>Phone</label>
+                    <input type="tel" id="addCustPhone" placeholder="(555) 123-4567">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Address</label>
+                <input type="text" id="addCustAddress" placeholder="123 Main St">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>City</label>
+                    <input type="text" id="addCustCity" placeholder="City">
+                </div>
+                <div class="form-group">
+                    <label>State</label>
+                    <input type="text" id="addCustState" placeholder="ST" maxlength="2">
+                </div>
+                <div class="form-group">
+                    <label>Zip</label>
+                    <input type="text" id="addCustZip" placeholder="12345" maxlength="10">
+                </div>
+            </div>
+            <div id="addCustStatus" style="display:none; padding:8px 12px; border-radius:8px; margin-bottom:12px; font-size:12px;"></div>
+            <button class="btn-primary" onclick="saveNewCustomer()">Save Customer</button>
+            <button class="btn-secondary" onclick="closeAddCustomerModal()">Cancel</button>
+        </div>
+    </div>
+</div>
 
 <!-- Edit Customer Modal -->
 <div class="modal-overlay" id="editModal">
@@ -3745,7 +3839,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
             <hr class="modal-divider">
             <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:10px; padding:16px;">
                 <h4 style="font-size:14px; font-weight:700; color:#dc2626; margin-bottom:8px;">Danger Zone</h4>
-                <p style="font-size:11px; color:#6b7280; margin-bottom:10px;">Permanently delete this customer's saved card and autopay subscriptions. Transaction history is preserved.</p>
+                <p style="font-size:11px; color:#6b7280; margin-bottom:10px;">Permanently remove this customer from Customers and autocomplete, including saved cards and autopay subscriptions. Transaction history is preserved.</p>
                 <button class="btn-primary" style="background:#dc2626; font-size:12px;" onclick="promptDeletePin()">Delete Customer</button>
             </div>
         </div>
@@ -3859,80 +3953,6 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
 </div>
 
 <script>
-// ─── Address Autocomplete (Nominatim/OpenStreetMap) ──────────
-function setupAddressAutocomplete(addressInputId, cityInputId, stateInputId, zipInputId) {
-    const addrInput = document.getElementById(addressInputId);
-    if (!addrInput) return;
-    let acTimer = null;
-    let acDropdown = null;
-
-    // Create dropdown
-    acDropdown = document.createElement('div');
-    acDropdown.className = 'addr-ac-dropdown';
-    acDropdown.style.cssText = 'display:none; position:absolute; left:0; right:0; top:100%; background:#fff; border:1px solid #d1d5db; border-top:0; border-radius:0 0 8px 8px; box-shadow:0 4px 12px rgba(0,0,0,.12); z-index:9999; max-height:220px; overflow-y:auto;';
-    addrInput.parentElement.style.position = 'relative';
-    addrInput.parentElement.appendChild(acDropdown);
-
-    addrInput.addEventListener('input', function() {
-        clearTimeout(acTimer);
-        const q = addrInput.value.trim();
-        if (q.length < 4) { acDropdown.style.display = 'none'; return; }
-        acTimer = setTimeout(() => {
-            fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=us&limit=5&q=' + encodeURIComponent(q), {headers:{'Accept':'application/json'}})
-                .then(r => r.json()).then(results => {
-                    if (!results.length) { acDropdown.style.display = 'none'; return; }
-                    acDropdown.innerHTML = '';
-                    results.forEach(r => {
-                        const addr = r.address || {};
-                        const houseNum = addr.house_number || '';
-                        const road = addr.road || '';
-                        const street = (houseNum + ' ' + road).trim();
-                        const city = addr.city || addr.town || addr.village || addr.hamlet || '';
-                        const state = addr.state || '';
-                        const zip = addr.postcode || '';
-                        // Convert state name to abbreviation
-                        const stateAbbr = stateToAbbr(state);
-                        const displayText = street + (city ? ', ' + city : '') + (stateAbbr ? ', ' + stateAbbr : '') + (zip ? ' ' + zip : '');
-
-                        const opt = document.createElement('div');
-                        opt.style.cssText = 'padding:10px 14px; font-size:13px; color:#1e293b; cursor:pointer; border-bottom:1px solid #f1f5f9; font-family:inherit;';
-                        opt.textContent = displayText;
-                        opt.onmouseover = () => opt.style.background = '#f0f9ff';
-                        opt.onmouseout = () => opt.style.background = '#fff';
-                        opt.onclick = () => {
-                            addrInput.value = street;
-                            if (cityInputId) document.getElementById(cityInputId).value = city;
-                            if (stateInputId) document.getElementById(stateInputId).value = stateAbbr || state;
-                            if (zipInputId) document.getElementById(zipInputId).value = zip;
-                            acDropdown.style.display = 'none';
-                        };
-                        acDropdown.appendChild(opt);
-                    });
-                    acDropdown.style.display = 'block';
-                }).catch(() => { acDropdown.style.display = 'none'; });
-        }, 350);
-    });
-
-    // Close on click outside
-    document.addEventListener('click', function(e) {
-        if (!addrInput.contains(e.target) && !acDropdown.contains(e.target)) acDropdown.style.display = 'none';
-    });
-}
-
-// US state name to abbreviation
-function stateToAbbr(name) {
-    const map = {'Alabama':'AL','Alaska':'AK','Arizona':'AZ','Arkansas':'AR','California':'CA','Colorado':'CO','Connecticut':'CT','Delaware':'DE','Florida':'FL','Georgia':'GA','Hawaii':'HI','Idaho':'ID','Illinois':'IL','Indiana':'IN','Iowa':'IA','Kansas':'KS','Kentucky':'KY','Louisiana':'LA','Maine':'ME','Maryland':'MD','Massachusetts':'MA','Michigan':'MI','Minnesota':'MN','Mississippi':'MS','Missouri':'MO','Montana':'MT','Nebraska':'NE','Nevada':'NV','New Hampshire':'NH','New Jersey':'NJ','New Mexico':'NM','New York':'NY','North Carolina':'NC','North Dakota':'ND','Ohio':'OH','Oklahoma':'OK','Oregon':'OR','Pennsylvania':'PA','Rhode Island':'RI','South Carolina':'SC','South Dakota':'SD','Tennessee':'TN','Texas':'TX','Utah':'UT','Vermont':'VT','Virginia':'VA','Washington':'WA','West Virginia':'WV','Wisconsin':'WI','Wyoming':'WY','District of Columbia':'DC'};
-    if (!name) return '';
-    if (name.length === 2) return name.toUpperCase();
-    return map[name] || name;
-}
-
-// Attach to all address fields
-setupAddressAutocomplete('clientAddress', 'clientCity', 'clientState', 'clientZip');
-setupAddressAutocomplete('apClientAddress', 'apClientCity', 'apClientState', 'apClientZip');
-setupAddressAutocomplete('editCustAddress', 'editCustCity', 'editCustState', 'editCustZip');
-setupAddressAutocomplete('vpClientAddress', 'vpClientCity', 'vpClientState', 'vpClientZip');
-
 // Card number formatting
 document.getElementById('cardNumber').addEventListener('input', function(e) {
     let v = e.target.value.replace(/\D/g, '').substring(0, 16);
@@ -4579,7 +4599,7 @@ function filterCusts() {
 }
 
 async function deleteCustomer(name) {
-    if (!confirm('Delete customer "' + name + '"? This removes their saved card and autopay subscriptions. Transaction history is preserved.')) return;
+    if (!confirm('Delete customer "' + name + '"? This fully removes them from Customers and autocomplete, including saved cards and autopay subscriptions. Transaction history is preserved.')) return;
     try {
         const res = await fetch('?action=delete_customer', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
         const data = await res.json();
@@ -5142,6 +5162,7 @@ document.head.appendChild(style);
 // ─── PIN Security System ─────────────────────────────────────
 var pinCallback = null;
 var pendingCustomerData = null;
+var pendingTransactionData = null;
 
 function promptEditPin(customer) {
     pendingCustomerData = customer;
@@ -5163,9 +5184,22 @@ function promptDeletePin() {
     setTimeout(() => document.getElementById('pinInput').focus(), 200);
 }
 
+function promptTxnPin(transaction) {
+    pendingTransactionData = transaction;
+    pinCallback = 'transaction';
+    document.getElementById('pinPromptText').textContent = 'Enter security PIN to view transaction actions for "' + (transaction.clientName || 'Walk-in') + '"';
+    document.getElementById('pinInput').value = '';
+    document.getElementById('pinError').style.display = 'none';
+    document.getElementById('pinModal').classList.add('show');
+    setTimeout(() => document.getElementById('pinInput').focus(), 200);
+}
+
 function closePinModal() {
     document.getElementById('pinModal').classList.remove('show');
+    document.getElementById('pinInput').value = '';
     pinCallback = null;
+    pendingCustomerData = null;
+    pendingTransactionData = null;
 }
 document.getElementById('pinModal').addEventListener('click', function(e) { if (e.target === this) closePinModal(); });
 
@@ -5175,14 +5209,17 @@ async function verifyPin() {
     try {
         const res = await fetch('?action=verify_pin', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ pin }) });
         const data = await res.json();
-        if (!data.success) { document.getElementById('pinError').textContent = 'Incorrect PIN'; document.getElementById('pinError').style.display = ''; return; }
+        if (!data.success) { document.getElementById('pinError').textContent = data.error || 'Incorrect PIN'; document.getElementById('pinError').style.display = ''; return; }
         const cb = pinCallback;
+        const customer = pendingCustomerData;
+        const transaction = pendingTransactionData;
         closePinModal();
-        if (cb === 'edit' && pendingCustomerData) {
-            openEditModal(pendingCustomerData);
-            pendingCustomerData = null;
+        if (cb === 'edit' && customer) {
+            openEditModal(customer);
         } else if (cb === 'delete' && editCustomerData) {
             deleteCustomer(editCustomerData.name);
+        } else if (cb === 'transaction' && transaction) {
+            openTxnEditModal(transaction);
         }
     } catch(e) { document.getElementById('pinError').textContent = 'Error: ' + e.message; document.getElementById('pinError').style.display = ''; }
 }
@@ -5257,15 +5294,53 @@ async function doRefund(id, amount) {
 function filterSchedule() {
     const from = document.getElementById('schedFrom').value;
     const to = document.getElementById('schedTo').value;
-    document.querySelectorAll('#scheduleTable tbody tr[data-sched-date]').forEach(r => {
+    document.querySelectorAll('#scheduleTable tbody tr.schedule-row').forEach(r => {
         const d = r.dataset.schedDate || '';
-        if (!d) return;
         const ym = d.substring(0, 7);
         let show = true;
         if (from && ym < from) show = false;
         if (to && ym > to) show = false;
         r.style.display = show ? '' : 'none';
     });
+}
+
+var scheduleSortCol = 0;
+var scheduleSortAsc = true;
+function sortScheduleTable(col) {
+    const table = document.getElementById('scheduleTable');
+    if (!table) return;
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr.schedule-row'));
+    if (scheduleSortCol === col) {
+        scheduleSortAsc = !scheduleSortAsc;
+    } else {
+        scheduleSortCol = col;
+        scheduleSortAsc = true;
+    }
+    rows.sort((a, b) => {
+        let va;
+        let vb;
+        if (col === 0) {
+            va = a.dataset.schedDate || '';
+            vb = b.dataset.schedDate || '';
+        } else if (col === 6) {
+            va = parseFloat(a.dataset.schedAmount) || 0;
+            vb = parseFloat(b.dataset.schedAmount) || 0;
+            return scheduleSortAsc ? va - vb : vb - va;
+        } else {
+            va = (a.cells[col]?.textContent || '').trim().toLowerCase();
+            vb = (b.cells[col]?.textContent || '').trim().toLowerCase();
+        }
+        return scheduleSortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+    });
+    rows.forEach(row => tbody.appendChild(row));
+    table.querySelectorAll('th[data-sort-col]').forEach(header => {
+        header.setAttribute('aria-sort', 'none');
+        header.querySelector('.schedule-sort-indicator').textContent = '';
+    });
+    const activeHeader = table.querySelector(`th[data-sort-col="${col}"]`);
+    activeHeader.setAttribute('aria-sort', scheduleSortAsc ? 'ascending' : 'descending');
+    activeHeader.querySelector('.schedule-sort-indicator').textContent = scheduleSortAsc ? ' ▲' : ' ▼';
 }
 
 function editScheduleItem(id, name, amount, date) {
@@ -5307,7 +5382,7 @@ function sortDashTable(col) {
     rows.sort((a, b) => {
         let va, vb;
         if (col === 0) { va = a.dataset.sortTime || ''; vb = b.dataset.sortTime || ''; }
-        else if (col === 4) { va = parseFloat(a.dataset.sortAmount) || 0; vb = parseFloat(b.dataset.sortAmount) || 0; return dashSortAsc ? va - vb : vb - va; }
+        else if (col === 5) { va = parseFloat(a.dataset.sortAmount) || 0; vb = parseFloat(b.dataset.sortAmount) || 0; return dashSortAsc ? va - vb : vb - va; }
         else { va = (a.cells[col]?.textContent || '').toLowerCase(); vb = (b.cells[col]?.textContent || '').toLowerCase(); }
         return dashSortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
     });
@@ -5602,6 +5677,15 @@ function filterLogs() {
 
 </script>
 <script>
+document.addEventListener('keydown', function(e) {
+    if (!e.target || (e.target.type !== 'tel' && e.target.id !== 'editCustPhone' && e.target.id !== 'addCustPhone')) return;
+    if (e.key !== 'Backspace' || e.target.selectionStart !== e.target.selectionEnd) return;
+
+    var caret = e.target.selectionStart;
+    while (caret > 0 && /[^0-9]/.test(e.target.value.charAt(caret - 1))) caret--;
+    if (caret !== e.target.selectionStart) e.target.setSelectionRange(caret, caret);
+});
+
 document.addEventListener('input', function(e) {
     if (e.target && (e.target.type === 'tel' || e.target.id === 'editCustPhone' || e.target.id === 'addCustPhone')) {
         var d = e.target.value.replace(/[^0-9]/g, '');

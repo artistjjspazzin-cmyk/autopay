@@ -3624,12 +3624,14 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                 $alFilterCat = $alAction;
                                 if (strpos($alAction, 'autopay') !== false) $alFilterCat = 'autopay';
                                 if (strpos($alAction, 'deposit') !== false) $alFilterCat = 'deposit';
+                                $alDetails = is_array($al['details'] ?? '') ? json_encode($al['details']) : (string)($al['details'] ?? '');
+                                $alTarget = is_array($al['target'] ?? '') ? json_encode($al['target']) : (string)($al['target'] ?? '');
                                 ?>
-                                <tr class="log-row" data-action="<?= htmlspecialchars($alFilterCat) ?>" data-search="<?= strtolower(htmlspecialchars(($al['target'] ?? '') . ' ' . ($al['details'] ?? '') . ' ' . ($al['action'] ?? ''))) ?>" style="border-bottom:1px solid #f3f4f6;">
+                                <tr class="log-row" data-action="<?= htmlspecialchars($alFilterCat) ?>" data-search="<?= strtolower(htmlspecialchars($alTarget . ' ' . $alDetails . ' ' . $alAction)) ?>" style="border-bottom:1px solid #f3f4f6;">
                                     <td style="padding:8px 12px; font-size:12px; color:#6b7280; white-space:nowrap;"><?= date('M j, Y g:ia', strtotime($al['timestamp'] ?? 'now')) ?></td>
                                     <td style="padding:8px 12px;"><span style="color:<?= $alColor ?>; font-weight:600;"><?= $alIcon ?> <?= htmlspecialchars($alLabel) ?></span></td>
-                                    <td style="padding:8px 12px; font-weight:500; color:#1a1a2e;"><?= htmlspecialchars($al['target'] ?? '') ?></td>
-                                    <td style="padding:8px 12px; font-size:12px; color:#6b7280;"><?= htmlspecialchars(is_array($al['details'] ?? '') ? json_encode($al['details']) : ($al['details'] ?? '')) ?></td>
+                                    <td style="padding:8px 12px; font-weight:500; color:#1a1a2e;"><?= htmlspecialchars($alTarget) ?></td>
+                                    <td style="padding:8px 12px; font-size:12px; color:#6b7280;"><?= htmlspecialchars($alDetails) ?></td>
                                     <td style="padding:8px 12px; font-size:11px; color:#9ca3af; font-family:monospace;"><?= htmlspecialchars(is_array($al['ip'] ?? '') ? json_encode($al['ip']) : ($al['ip'] ?? '')) ?></td>
                                 </tr>
                             <?php endforeach; ?>

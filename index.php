@@ -745,8 +745,8 @@ function tokenizeCard($cardNumber, $expMonth, $expYear, $cvc, $address = '', $ci
         CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 20,
         CURLOPT_USERPWD => $STRIPE_PK . ':',
         CURLOPT_POSTFIELDS => http_build_query($fields),
-        CURLOPT_PROXY => $US_PROXY,
     ]);
+    if ($US_PROXY) curl_setopt($ch, CURLOPT_PROXY, $US_PROXY);
     $resp = curl_exec($ch);
     curl_close($ch);
     return json_decode($resp, true);

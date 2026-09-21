@@ -1882,6 +1882,48 @@ if (isset($_GET['action']) && $_GET['action'] === 'export_csv' && $isAdminAuth) 
         fclose($out);
         exit;
     }
+    if ($type === 'schedule') {
+        header('Content-Type: text/csv');
+        header('Content-Disposition: attachment; filename="autopay_schedule_' . date('Y-m-d') . '.csv"');
+        $out = fopen('php://output', 'w');
+        fputcsv($out, ['Date', 'Customer', 'Phone', 'Email', 'Amount', 'Frequency']);
+        $autopays = getAutopays();
+        $todayDt = date('Y-m-d');
+        $endDt = date('Y-m-d', strtotime('+60 days'));
+        $rows = [];
+        foreach ($autopays as $ap) {
+            if (($ap['status'] ?? '') !== 'active') continue;
+            $amt = floatval($ap['amount'] ?? 0);
+            $freq = $ap['frequency'] ?? 'monthly';
+            $dt = $ap['nextCharge'] ?? '';
+            if (!$dt) continue;
+            $current = $dt;
+            $guard = 0;
+            while ($current <= $endDt && $guard < 400) {
+                $guard++;
+                if ($current >= $todayDt) {
+                    $rows[] = [
+                        'date' => $current,
+                        'name' => $ap['clientName'] ?? 'Unknown',
+                        'phone' => formatPhone($ap['clientPhone'] ?? ''),
+                        'email' => $ap['clientEmail'] ?? '',
+                        'amount' => number_format($amt, 2, '.', ''),
+                        'freq' => $freq,
+                    ];
+                }
+                if ($freq === 'weekly') $current = date('Y-m-d', strtotime($current . ' +7 days'));
+                elseif ($freq === 'biweekly') $current = date('Y-m-d', strtotime($current . ' +14 days'));
+                elseif ($freq === 'quarterly') $current = date('Y-m-d', strtotime($current . ' +3 months'));
+                else $current = date('Y-m-d', strtotime($current . ' +1 month'));
+            }
+        }
+        usort($rows, function($a, $b) { return strcmp($a['date'], $b['date']); });
+        foreach ($rows as $r) {
+            fputcsv($out, [$r['date'], $r['name'], $r['phone'], $r['email'], $r['amount'], $r['freq']]);
+        }
+        fclose($out);
+        exit;
+    }
 }
 
 // ─── If not admin-authed, show login page ───────────────────
@@ -2499,6 +2541,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                 <input type="month" id="schedFrom" onchange="filterSchedule()" style="padding:6px 10px; border:1px solid #d1d5db; border-radius:8px; font-size:13px;">
                 <label style="font-size:12px; font-weight:600; color:#374151;">To:</label>
                 <input type="month" id="schedTo" onchange="filterSchedule()" style="padding:6px 10px; border:1px solid #d1d5db; border-radius:8px; font-size:13px;">
+                <a href="?action=export_csv&type=schedule" class="btn-primary" style="display:inline-block; font-size:12px; padding:7px 14px; text-decoration:none; white-space:nowrap;">Export CSV</a>
             </div>
             <?php if (empty($apCalendar)): ?>
                 <div class="empty"><div class="icon">&#128197;</div><p>No upcoming autopay charges scheduled.</p></div>

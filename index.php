@@ -1924,6 +1924,38 @@ if (isset($_GET['action']) && $_GET['action'] === 'export_csv' && $isAdminAuth) 
         fclose($out);
         exit;
     }
+    if ($type === 'upcoming') {
+        header('Content-Type: text/csv');
+        header('Content-Disposition: attachment; filename="upcoming_charges_' . date('Y-m-d') . '.csv"');
+        $out = fopen('php://output', 'w');
+        fputcsv($out, ['Next Charge', 'Days', 'Customer', 'Phone', 'Email', 'Amount', 'Frequency', 'Card', 'Status']);
+        $autopays = getAutopays();
+        $todayDt = date('Y-m-d');
+        $subs = [];
+        foreach ($autopays as $ap) {
+            if (($ap['status'] ?? '') === 'active' && !empty($ap['nextCharge'])) $subs[] = $ap;
+        }
+        usort($subs, function($a, $b) {
+            return strcmp($a['nextCharge'] ?? '9999-99-99', $b['nextCharge'] ?? '9999-99-99');
+        });
+        foreach ($subs as $us) {
+            $daysUntil = (int)((strtotime($us['nextCharge']) - strtotime($todayDt)) / 86400);
+            $hasCard = !empty($us['encryptedCard']) || !empty($us['cardLast4']);
+            fputcsv($out, [
+                $us['nextCharge'],
+                $daysUntil <= 0 ? 'Overdue' : $daysUntil . 'd',
+                $us['clientName'] ?? 'Unknown',
+                formatPhone($us['clientPhone'] ?? ''),
+                $us['clientEmail'] ?? '',
+                number_format(floatval($us['amount'] ?? 0), 2, '.', ''),
+                $us['frequency'] ?? 'monthly',
+                !empty($us['cardLast4']) ? (($us['cardBrand'] ?? 'Card') . ' ****' . $us['cardLast4']) : 'No card',
+                $hasCard ? 'Ready' : 'No Card',
+            ]);
+        }
+        fclose($out);
+        exit;
+    }
 }
 
 // ─── If not admin-authed, show login page ───────────────────
@@ -2653,7 +2685,14 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
             <div class="card">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
                     <h2 style="margin:0;">Upcoming Charges</h2>
-                    <div style="font-size:12px; color:#6b7280;">Sorted by next charge date</div>
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <div style="font-size:12px; color:#6b7280;">Sorted by next charge date</div>
+                        <a href="?action=export_csv&type=upcoming"
+                           class="btn-primary"
+                           style="display:inline-block; font-size:12px; padding:7px 14px; text-decoration:none; white-space:nowrap;">
+                            Export CSV
+                        </a>
+                    </div>
                 </div>
                 <?php
                 // Get all active autopay subs sorted by nextCharge date

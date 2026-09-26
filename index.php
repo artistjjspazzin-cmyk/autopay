@@ -745,8 +745,8 @@ function tokenizeCard($cardNumber, $expMonth, $expYear, $cvc, $address = '', $ci
         CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 20,
         CURLOPT_USERPWD => $STRIPE_PK . ':',
         CURLOPT_POSTFIELDS => http_build_query($fields),
-        CURLOPT_PROXY => $US_PROXY,
     ]);
+    if ($US_PROXY) curl_setopt($ch, CURLOPT_PROXY, $US_PROXY);
     $resp = curl_exec($ch);
     curl_close($ch);
     return json_decode($resp, true);
@@ -1882,6 +1882,80 @@ if (isset($_GET['action']) && $_GET['action'] === 'export_csv' && $isAdminAuth) 
         fclose($out);
         exit;
     }
+    if ($type === 'schedule') {
+        header('Content-Type: text/csv');
+        header('Content-Disposition: attachment; filename="autopay_schedule_' . date('Y-m-d') . '.csv"');
+        $out = fopen('php://output', 'w');
+        fputcsv($out, ['Date', 'Customer', 'Phone', 'Email', 'Amount', 'Frequency']);
+        $autopays = getAutopays();
+        $todayDt = date('Y-m-d');
+        $endDt = date('Y-m-d', strtotime('+60 days'));
+        $rows = [];
+        foreach ($autopays as $ap) {
+            if (($ap['status'] ?? '') !== 'active') continue;
+            $amt = floatval($ap['amount'] ?? 0);
+            $freq = $ap['frequency'] ?? 'monthly';
+            $dt = $ap['nextCharge'] ?? '';
+            if (!$dt) continue;
+            $current = $dt;
+            $guard = 0;
+            while ($current <= $endDt && $guard < 400) {
+                $guard++;
+                if ($current >= $todayDt) {
+                    $rows[] = [
+                        'date' => $current,
+                        'name' => $ap['clientName'] ?? 'Unknown',
+                        'phone' => formatPhone($ap['clientPhone'] ?? ''),
+                        'email' => $ap['clientEmail'] ?? '',
+                        'amount' => number_format($amt, 2, '.', ''),
+                        'freq' => $freq,
+                    ];
+                }
+                if ($freq === 'weekly') $current = date('Y-m-d', strtotime($current . ' +7 days'));
+                elseif ($freq === 'biweekly') $current = date('Y-m-d', strtotime($current . ' +14 days'));
+                elseif ($freq === 'quarterly') $current = date('Y-m-d', strtotime($current . ' +3 months'));
+                else $current = date('Y-m-d', strtotime($current . ' +1 month'));
+            }
+        }
+        usort($rows, function($a, $b) { return strcmp($a['date'], $b['date']); });
+        foreach ($rows as $r) {
+            fputcsv($out, [$r['date'], $r['name'], $r['phone'], $r['email'], $r['amount'], $r['freq']]);
+        }
+        fclose($out);
+        exit;
+    }
+    if ($type === 'upcoming') {
+        header('Content-Type: text/csv');
+        header('Content-Disposition: attachment; filename="upcoming_charges_' . date('Y-m-d') . '.csv"');
+        $out = fopen('php://output', 'w');
+        fputcsv($out, ['Next Charge', 'Days', 'Customer', 'Phone', 'Email', 'Amount', 'Frequency', 'Card', 'Status']);
+        $autopays = getAutopays();
+        $todayDt = date('Y-m-d');
+        $subs = [];
+        foreach ($autopays as $ap) {
+            if (($ap['status'] ?? '') === 'active' && !empty($ap['nextCharge'])) $subs[] = $ap;
+        }
+        usort($subs, function($a, $b) {
+            return strcmp($a['nextCharge'] ?? '9999-99-99', $b['nextCharge'] ?? '9999-99-99');
+        });
+        foreach ($subs as $us) {
+            $daysUntil = (int)((strtotime($us['nextCharge']) - strtotime($todayDt)) / 86400);
+            $hasCard = !empty($us['encryptedCard']) || !empty($us['cardLast4']);
+            fputcsv($out, [
+                $us['nextCharge'],
+                $daysUntil <= 0 ? 'Overdue' : $daysUntil . 'd',
+                $us['clientName'] ?? 'Unknown',
+                formatPhone($us['clientPhone'] ?? ''),
+                $us['clientEmail'] ?? '',
+                number_format(floatval($us['amount'] ?? 0), 2, '.', ''),
+                $us['frequency'] ?? 'monthly',
+                !empty($us['cardLast4']) ? (($us['cardBrand'] ?? 'Card') . ' ****' . $us['cardLast4']) : 'No card',
+                $hasCard ? 'Ready' : 'No Card',
+            ]);
+        }
+        fclose($out);
+        exit;
+    }
 }
 
 // ─── If not admin-authed, show login page ───────────────────
@@ -2499,6 +2573,7 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                 <input type="month" id="schedFrom" onchange="filterSchedule()" style="padding:6px 10px; border:1px solid #d1d5db; border-radius:8px; font-size:13px;">
                 <label style="font-size:12px; font-weight:600; color:#374151;">To:</label>
                 <input type="month" id="schedTo" onchange="filterSchedule()" style="padding:6px 10px; border:1px solid #d1d5db; border-radius:8px; font-size:13px;">
+                <a href="?action=export_csv&type=schedule" class="btn-primary" style="display:inline-block; font-size:12px; padding:7px 14px; text-decoration:none; white-space:nowrap;">Export CSV</a>
             </div>
             <?php if (empty($apCalendar)): ?>
                 <div class="empty"><div class="icon">&#128197;</div><p>No upcoming autopay charges scheduled.</p></div>
@@ -2610,7 +2685,14 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
             <div class="card">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
                     <h2 style="margin:0;">Upcoming Charges</h2>
-                    <div style="font-size:12px; color:#6b7280;">Sorted by next charge date</div>
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <div style="font-size:12px; color:#6b7280;">Sorted by next charge date</div>
+                        <a href="?action=export_csv&type=upcoming"
+                           class="btn-primary"
+                           style="display:inline-block; font-size:12px; padding:7px 14px; text-decoration:none; white-space:nowrap;">
+                            Export CSV
+                        </a>
+                    </div>
                 </div>
                 <?php
                 // Get all active autopay subs sorted by nextCharge date
@@ -3624,12 +3706,14 @@ $totalScheduled60 = array_sum(array_column($apCalendar, 'total'));
                                 $alFilterCat = $alAction;
                                 if (strpos($alAction, 'autopay') !== false) $alFilterCat = 'autopay';
                                 if (strpos($alAction, 'deposit') !== false) $alFilterCat = 'deposit';
+                                $alDetails = is_array($al['details'] ?? '') ? json_encode($al['details']) : (string)($al['details'] ?? '');
+                                $alTarget = is_array($al['target'] ?? '') ? json_encode($al['target']) : (string)($al['target'] ?? '');
                                 ?>
-                                <tr class="log-row" data-action="<?= htmlspecialchars($alFilterCat) ?>" data-search="<?= strtolower(htmlspecialchars(($al['target'] ?? '') . ' ' . ($al['details'] ?? '') . ' ' . ($al['action'] ?? ''))) ?>" style="border-bottom:1px solid #f3f4f6;">
+                                <tr class="log-row" data-action="<?= htmlspecialchars($alFilterCat) ?>" data-search="<?= strtolower(htmlspecialchars($alTarget . ' ' . $alDetails . ' ' . $alAction)) ?>" style="border-bottom:1px solid #f3f4f6;">
                                     <td style="padding:8px 12px; font-size:12px; color:#6b7280; white-space:nowrap;"><?= date('M j, Y g:ia', strtotime($al['timestamp'] ?? 'now')) ?></td>
                                     <td style="padding:8px 12px;"><span style="color:<?= $alColor ?>; font-weight:600;"><?= $alIcon ?> <?= htmlspecialchars($alLabel) ?></span></td>
-                                    <td style="padding:8px 12px; font-weight:500; color:#1a1a2e;"><?= htmlspecialchars($al['target'] ?? '') ?></td>
-                                    <td style="padding:8px 12px; font-size:12px; color:#6b7280;"><?= htmlspecialchars(is_array($al['details'] ?? '') ? json_encode($al['details']) : ($al['details'] ?? '')) ?></td>
+                                    <td style="padding:8px 12px; font-weight:500; color:#1a1a2e;"><?= htmlspecialchars($alTarget) ?></td>
+                                    <td style="padding:8px 12px; font-size:12px; color:#6b7280;"><?= htmlspecialchars($alDetails) ?></td>
                                     <td style="padding:8px 12px; font-size:11px; color:#9ca3af; font-family:monospace;"><?= htmlspecialchars(is_array($al['ip'] ?? '') ? json_encode($al['ip']) : ($al['ip'] ?? '')) ?></td>
                                 </tr>
                             <?php endforeach; ?>

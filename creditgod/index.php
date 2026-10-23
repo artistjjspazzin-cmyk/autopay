@@ -1,9 +1,40 @@
 <?php
 require_once __DIR__ . '/lib.php';
 
+const CG_ADMIN = 'creditgod_admin.json';
+
+session_name('CGSESS');
+session_set_cookie_params(['path' => '/creditgod']);
 session_start();
 
-$isAdminAuth = !empty($_SESSION['admin_auth']);
+$loginError = '';
+
+if (($_GET['action'] ?? '') === 'logout') {
+    $_SESSION = [];
+    session_destroy();
+    header('Location: /creditgod/');
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_GET['action'] ?? '') === 'login') {
+    $admin = storageReadDocument(CG_ADMIN, []);
+    $user = trim((string)($_POST['username'] ?? ''));
+    $pass = (string)($_POST['password'] ?? '');
+    if (!$admin || empty($admin['username']) || empty($admin['passwordHash'])) {
+        $loginError = 'CreditGod admin account is not provisioned yet.';
+    } elseif (hash_equals(strtolower($admin['username']), strtolower($user)) && password_verify($pass, $admin['passwordHash'])) {
+        session_regenerate_id(true);
+        $_SESSION['cg_auth'] = true;
+        cgAudit('admin_login', 'CreditGod dashboard', 'Signed in as ' . $admin['username']);
+        header('Location: /creditgod/');
+        exit;
+    } else {
+        $loginError = 'Invalid username or password.';
+        usleep(400000);
+    }
+}
+
+$isAdminAuth = !empty($_SESSION['cg_auth']);
 
 $transactions = cgTransactions();
 $subscriptions = cgAutopays();
@@ -53,9 +84,18 @@ function cgEsc(string $value): string {
     <div class="sub">Separate ledger — these records never appear in the Autopay terminal.</div>
 
 <?php if (!$isAdminAuth): ?>
-    <div class="card">
-        <strong>Admin login required.</strong>
-        <p>Sign in on the <a href="/">terminal login</a>, then return to this page.</p>
+    <div class="card" style="max-width:380px;">
+        <h2 style="font-size:16px; margin:0 0 14px;">Sign in</h2>
+        <form method="post" action="/creditgod/?action=login">
+            <input name="username" placeholder="Username" autocomplete="username" required
+                   style="width:100%; padding:11px 12px; margin-bottom:10px; border:1px solid #d1d5db; border-radius:8px; font-size:14px;">
+            <input name="password" type="password" placeholder="Password" autocomplete="current-password" required
+                   style="width:100%; padding:11px 12px; margin-bottom:14px; border:1px solid #d1d5db; border-radius:8px; font-size:14px;">
+            <button type="submit" style="width:100%; padding:11px; background:#111827; color:#fff; border:0; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer;">Sign In</button>
+            <?php if ($loginError): ?>
+                <div style="margin-top:12px; color:#b91c1b; font-size:13px;"><?= cgEsc($loginError) ?></div>
+            <?php endif; ?>
+        </form>
     </div>
     <div class="card">
         <h2 style="font-size:16px; margin-top:0;">API</h2>
@@ -63,6 +103,8 @@ function cgEsc(string $value): string {
         <p>Send <code>Authorization: Bearer &lt;api key&gt;</code>. See <code>?endpoint=</code> listing for available endpoints.</p>
     </div>
 <?php else: ?>
+    <div style="margin-bottom:14px;"><a href="/creditgod/?action=logout" style="font-size:13px;">Sign out</a></div>
+
     <div class="stats">
         <div class="stat"><div class="label">Processed</div><div class="value">$<?= number_format($processedTotal, 2) ?></div></div>
         <div class="stat"><div class="label">Transactions</div><div class="value"><?= count($transactions) ?></div></div>

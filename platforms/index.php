@@ -1,174 +1,122 @@
 <?php
-require_once dirname(__DIR__) . '/storage.php';
+require_once dirname(__DIR__) . '/sites/lib.php';
 
-const PF_ADMIN = 'platforms_admin.json';
-const PF_REGISTRY = 'platforms.json';
+pfSessionStart();
 
-session_name('PFSESS');
-session_set_cookie_params(['path' => '/platforms']);
-session_start();
-
-function pfEsc($value): string {
-    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
-}
-
-function pfRegistry(): array {
-    $registry = storageReadDocument(PF_REGISTRY, []);
-    if (!$registry) {
-        $registry = [
-            [
-                'id' => 'autopay',
-                'name' => 'Autopay',
-                'url' => 'https://autopay.builtbyjj.dev',
-                'transactionsDoc' => 'transactions.json',
-                'subscriptionsDoc' => 'autopay.json',
-                'notes' => 'Main payment terminal',
-                'createdAt' => date('c'),
-            ],
-            [
-                'id' => 'creditgod',
-                'name' => 'CreditGod',
-                'url' => 'https://autopay.builtbyjj.dev/creditgod',
-                'transactionsDoc' => 'creditgod_transactions.json',
-                'subscriptionsDoc' => 'creditgod_autopay.json',
-                'notes' => 'Customer checkout API',
-                'createdAt' => date('c'),
-            ],
-        ];
-        storageWriteDocument(PF_REGISTRY, $registry);
-    }
-    return $registry;
-}
-
-function pfStats(array $platform): array {
-    $txns = $platform['transactionsDoc'] ? storageReadDocument($platform['transactionsDoc'], []) : [];
-    $subs = $platform['subscriptionsDoc'] ? storageReadDocument($platform['subscriptionsDoc'], []) : [];
-    if (!is_array($txns)) $txns = [];
-    if (!is_array($subs)) $subs = [];
-
-    $approved = 0; $volume = 0.0; $declined = 0; $refunded = 0; $last = null; $customers = [];
-    $monthStart = strtotime(date('Y-m-01'));
-    $monthVolume = 0.0; $monthCount = 0;
-
-    foreach ($txns as $t) {
-        if (!is_array($t)) continue;
-        $status = strtolower((string)($t['status'] ?? ''));
-        $amount = floatval($t['amount'] ?? 0);
-        $ts = strtotime((string)($t['timestamp'] ?? $t['date'] ?? '')) ?: null;
-        if ($status === 'approved') { $approved++; $volume += $amount; }
-        elseif ($status === 'declined') { $declined++; }
-        elseif ($status === 'refunded') { $refunded++; }
-        if ($ts && ($last === null || $ts > $last)) $last = $ts;
-        if ($ts && $ts >= $monthStart && $status === 'approved') { $monthVolume += $amount; $monthCount++; }
-        $name = trim((string)($t['clientName'] ?? $t['client_name'] ?? ''));
-        if ($name !== '') $customers[strtolower($name)] = true;
-    }
-
-    $activeSubs = 0; $subVolume = 0.0;
-    foreach ($subs as $s) {
-        if (!is_array($s)) continue;
-        if (strtolower((string)($s['status'] ?? 'active')) === 'active') {
-            $activeSubs++;
-            $subVolume += floatval($s['amount'] ?? 0);
-        }
-        $name = trim((string)($s['clientName'] ?? $s['client_name'] ?? ''));
-        if ($name !== '') $customers[strtolower($name)] = true;
-    }
-
-    return [
-        'transactions' => count($txns),
-        'approved' => $approved,
-        'declined' => $declined,
-        'refunded' => $refunded,
-        'volume' => $volume,
-        'monthVolume' => $monthVolume,
-        'monthCount' => $monthCount,
-        'activeSubs' => $activeSubs,
-        'recurringPerCycle' => $subVolume,
-        'customers' => count($customers),
-        'lastActivity' => $last,
-    ];
-}
-
+$action = (string)($_GET['action'] ?? '');
 $loginError = '';
-$flash = '';
+$error = '';
+$flash = (string)($_SESSION['flash'] ?? '');
+$created = $_SESSION['created'] ?? null;
+unset($_SESSION['flash'], $_SESSION['created']);
 
-if (($_GET['action'] ?? '') === 'logout') {
-    $_SESSION = [];
-    session_destroy();
-    header('Location: /platforms/');
+function pfRedirect(string $flash = '', string $anchor = ''): void {
+    if ($flash !== '') $_SESSION['flash'] = $flash;
+    header('Location: /platforms/' . $anchor);
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_GET['action'] ?? '') === 'login') {
-    $admin = storageReadDocument(PF_ADMIN, []);
-    $user = trim((string)($_POST['username'] ?? ''));
-    $pass = (string)($_POST['password'] ?? '');
-    if (!$admin || empty($admin['username']) || empty($admin['passwordHash'])) {
-        $loginError = 'Admin account is not provisioned yet.';
-    } elseif (hash_equals(strtolower($admin['username']), strtolower($user)) && password_verify($pass, $admin['passwordHash'])) {
-        session_regenerate_id(true);
-        $_SESSION['pf_auth'] = true;
-        header('Location: /platforms/');
-        exit;
-    } else {
-        $loginError = 'Invalid username or password.';
-        usleep(400000);
+if ($action === 'logout') {
+    pfLogout();
+    pfRedirect();
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'login') {
+    $u = pfAuthenticate((string)($_POST['username'] ?? ''), (string)($_POST['password'] ?? ''));
+    if ($u) { pfLogin($u); pfRedirect(); }
+    $loginError = 'Invalid username or password.';
+}
+
+$user = pfCurrentUser();
+$isOwner = pfIsOwner($user);
+
+if ($user && $_SERVER['REQUEST_METHOD'] === 'POST' && $action !== 'login') {
+    if (!pfCsrfOk()) {
+        $error = 'Your session expired. Reload the page and try again.';
+    } elseif (!$isOwner) {
+        $error = 'Only the owner can make changes here.';
+    } elseif ($action === 'create-site') {
+        try {
+            $site = siteCreate(trim((string)($_POST['name'] ?? '')), trim((string)($_POST['notes'] ?? '')));
+            $_SESSION['created'] = ['id' => $site['id'], 'name' => $site['name'], 'url' => $site['url'], 'apiUrl' => $site['apiUrl'], 'keys' => siteKeys($site)];
+            pfRedirect('', '#new-site');
+        } catch (InvalidArgumentException $e) {
+            $error = $e->getMessage();
+        }
+    } elseif ($action === 'track') {
+        $name = trim((string)($_POST['name'] ?? ''));
+        $id = pfSlug($name);
+        if ($id === '') {
+            $error = 'Platform name is required.';
+        } elseif (pfFindSite($id)) {
+            $error = 'A platform with that name already exists.';
+        } else {
+            pfSaveSite([
+                'id' => $id, 'name' => $name, 'type' => 'linked',
+                'url' => trim((string)($_POST['url'] ?? '')),
+                'transactionsDoc' => trim((string)($_POST['transactionsDoc'] ?? '')),
+                'subscriptionsDoc' => trim((string)($_POST['subscriptionsDoc'] ?? '')),
+                'notes' => trim((string)($_POST['notes'] ?? '')), 'createdAt' => date('c'),
+            ]);
+            pfRedirect('Now tracking ' . $name . '.');
+        }
+    } elseif ($action === 'remove') {
+        $id = (string)($_POST['id'] ?? '');
+        storageMutateDocument(PF_REGISTRY, [], fn($all) => array_values(array_filter($all, fn($p) => ($p['id'] ?? '') !== $id)));
+        pfRedirect('Removed ' . $id . ' from the list. Its payment records were kept.');
+    } elseif ($action === 'save-user') {
+        $username = trim((string)($_POST['username'] ?? ''));
+        $password = (string)($_POST['password'] ?? '');
+        $existing = pfFindUser($username);
+        if (!preg_match('/^[A-Za-z0-9._@-]{3,40}$/', $username)) {
+            $error = 'Username must be 3-40 letters, numbers, or . _ @ -';
+        } elseif (!$existing && strlen($password) < 8) {
+            $error = 'New users need a password of at least 8 characters.';
+        } elseif ($password !== '' && strlen($password) < 8) {
+            $error = 'Password must be at least 8 characters.';
+        } elseif ($existing && pfIsOwner($existing) && strcasecmp($existing['username'], $user['username']) !== 0) {
+            $error = 'Another owner account cannot be edited here.';
+        } else {
+            $role = ($existing && pfIsOwner($existing)) ? 'owner' : 'member';
+            $validSites = array_column(pfRegistry(), 'id');
+            $sites = array_values(array_intersect((array)($_POST['sites'] ?? []), $validSites));
+            $perms = array_values(array_intersect((array)($_POST['perms'] ?? []), array_keys(PF_PERMISSIONS)));
+            if (!in_array('view', $perms, true)) array_unshift($perms, 'view');
+            $record = array_merge($existing ?? ['createdAt' => date('c')], [
+                'username' => $existing['username'] ?? $username,
+                'role' => $role,
+                'sites' => $role === 'owner' ? ['*'] : $sites,
+                'perms' => $role === 'owner' ? array_keys(PF_PERMISSIONS) : $perms,
+                'active' => $role === 'owner' ? true : !empty($_POST['active']),
+                'updatedAt' => date('c'),
+            ]);
+            if ($password !== '') $record['passwordHash'] = password_hash($password, PASSWORD_BCRYPT);
+            pfSaveUser($record);
+            pfRedirect(($existing ? 'Updated ' : 'Added ') . $record['username'] . '.', '#users');
+        }
+    } elseif ($action === 'delete-user') {
+        $target = pfFindUser((string)($_POST['username'] ?? ''));
+        if (!$target || pfIsOwner($target)) {
+            $error = 'That user cannot be removed.';
+        } else {
+            pfDeleteUser($target['username']);
+            pfRedirect('Removed user ' . $target['username'] . '.', '#users');
+        }
     }
 }
 
-$isAuth = !empty($_SESSION['pf_auth']);
-
-if ($isAuth && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_GET['action'] ?? '') === 'add') {
-    $name = trim((string)($_POST['name'] ?? ''));
-    $id = strtolower(preg_replace('/[^a-z0-9]+/i', '-', $name));
-    if ($name === '') {
-        $flash = 'Platform name is required.';
-    } else {
-        $new = [
-            'id' => $id,
-            'name' => $name,
-            'url' => trim((string)($_POST['url'] ?? '')),
-            'transactionsDoc' => trim((string)($_POST['transactionsDoc'] ?? '')),
-            'subscriptionsDoc' => trim((string)($_POST['subscriptionsDoc'] ?? '')),
-            'notes' => trim((string)($_POST['notes'] ?? '')),
-            'createdAt' => date('c'),
-        ];
-        storageMutateDocument(PF_REGISTRY, [], function ($all) use ($new) {
-            $all = array_values(array_filter($all, fn($p) => ($p['id'] ?? '') !== $new['id']));
-            $all[] = $new;
-            return $all;
-        });
-        header('Location: /platforms/?added=' . urlencode($new['name']));
-        exit;
-    }
-}
-
-if ($isAuth && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_GET['action'] ?? '') === 'remove') {
-    $id = (string)($_POST['id'] ?? '');
-    storageMutateDocument(PF_REGISTRY, [], function ($all) use ($id) {
-        return array_values(array_filter($all, fn($p) => ($p['id'] ?? '') !== $id));
-    });
-    header('Location: /platforms/?removed=' . urlencode($id));
-    exit;
-}
-
-if (isset($_GET['added'])) $flash = 'Added platform: ' . $_GET['added'];
-if (isset($_GET['removed'])) $flash = 'Removed platform: ' . $_GET['removed'];
-
-$platforms = $isAuth ? pfRegistry() : [];
 $rows = [];
 $totals = ['volume' => 0.0, 'transactions' => 0, 'activeSubs' => 0, 'customers' => 0, 'monthVolume' => 0.0];
-foreach ($platforms as $p) {
-    $stats = pfStats($p);
-    $rows[] = ['platform' => $p, 'stats' => $stats];
-    $totals['volume'] += $stats['volume'];
-    $totals['transactions'] += $stats['transactions'];
-    $totals['activeSubs'] += $stats['activeSubs'];
-    $totals['customers'] += $stats['customers'];
-    $totals['monthVolume'] += $stats['monthVolume'];
+$allSites = $user ? pfRegistry() : [];
+foreach ($allSites as $p) {
+    if (!pfCanSee($user, $p['id'] ?? '')) continue;
+    $s = pfStats($p);
+    $rows[] = ['platform' => $p, 'stats' => $s];
+    foreach ($totals as $k => $_) $totals[$k] += $s[$k];
 }
 usort($rows, fn($a, $b) => $b['stats']['volume'] <=> $a['stats']['volume']);
+$users = $isOwner ? pfUsers() : [];
+$editUser = $isOwner && isset($_GET['user']) ? pfFindUser((string)$_GET['user']) : null;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -177,45 +125,24 @@ usort($rows, fn($a, $b) => $b['stats']['volume'] <=> $a['stats']['volume']);
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>Platforms</title>
-<style>
-    * { box-sizing: border-box; }
-    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:#f3f4f6; color:#111827; }
-    .wrap { max-width:1100px; margin:0 auto; padding:28px 22px 60px; }
-    h1 { font-size:23px; margin:0 0 4px; }
-    .sub { color:#6b7280; font-size:13px; margin-bottom:22px; }
-    .card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:18px 20px; margin-bottom:18px; }
-    .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:14px; margin-bottom:18px; }
-    .stat { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:15px 16px; }
-    .stat .label { font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:.05em; }
-    .stat .value { font-size:23px; font-weight:600; margin-top:6px; }
-    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:16px; }
-    .pf { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:18px 20px; }
-    .pf h3 { margin:0 0 2px; font-size:17px; }
-    .pf .url { font-size:12px; margin-bottom:12px; }
-    .kv { display:grid; grid-template-columns:1fr auto; gap:6px 10px; font-size:13px; }
-    .kv .k { color:#6b7280; }
-    .kv .v { font-weight:600; text-align:right; }
-    .meta { margin-top:12px; padding-top:12px; border-top:1px solid #f3f4f6; font-size:11.5px; color:#6b7280; word-break:break-all; }
-    label { display:block; font-size:12px; color:#374151; margin:0 0 4px; font-weight:600; }
-    input, textarea { width:100%; padding:10px 11px; border:1px solid #d1d5db; border-radius:8px; font-size:14px; margin-bottom:12px; font-family:inherit; }
-    button { padding:10px 16px; background:#111827; color:#fff; border:0; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; }
-    button.link { background:none; color:#b91c1c; padding:0; font-size:12px; font-weight:500; }
-    .flash { background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; border-radius:10px; padding:11px 14px; margin-bottom:16px; font-size:13px; }
-    .two { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-    a { color:#2563eb; }
-    .idle { color:#b45309; }
-</style>
+<style><?= pfStyles() ?></style>
 </head>
 <body>
 <div class="wrap">
-    <h1>Platforms</h1>
-    <div class="sub">Who is using our services, across every site.</div>
+    <div class="top">
+        <div>
+            <h1>Platforms</h1>
+            <div class="sub">Who is using our services, across every site.</div>
+        </div>
+        <?php if ($user): ?><div class="sub">Signed in as <b><?= pfEsc($user['username']) ?></b> (<?= pfEsc($user['role'] ?? 'member') ?>) · <a href="/platforms/?action=logout">Sign out</a></div><?php endif; ?>
+    </div>
 
 <?php if ($flash): ?><div class="flash"><?= pfEsc($flash) ?></div><?php endif; ?>
+<?php if ($error): ?><div class="error"><?= pfEsc($error) ?></div><?php endif; ?>
 
-<?php if (!$isAuth): ?>
+<?php if (!$user): ?>
     <div class="card" style="max-width:380px;">
-        <h2 style="font-size:16px; margin:0 0 14px;">Sign in</h2>
+        <h2>Sign in</h2>
         <form method="post" action="/platforms/?action=login">
             <input name="username" placeholder="Username" autocomplete="username" required>
             <input name="password" type="password" placeholder="Password" autocomplete="current-password" required>
@@ -224,7 +151,20 @@ usort($rows, fn($a, $b) => $b['stats']['volume'] <=> $a['stats']['volume']);
         </form>
     </div>
 <?php else: ?>
-    <div style="margin-bottom:14px;"><a href="/platforms/?action=logout" style="font-size:13px;">Sign out</a></div>
+
+    <?php if ($created): ?>
+    <div class="card" id="new-site" style="border-color:#86efac;">
+        <h2><?= pfEsc($created['name']) ?> is ready</h2>
+        <div class="kv" style="grid-template-columns:auto 1fr;">
+            <div class="k">Dashboard</div><div><a href="<?= pfEsc($created['url']) ?>"><?= pfEsc($created['url']) ?></a></div>
+            <div class="k">API URL</div><div><code><?= pfEsc($created['apiUrl']) ?></code></div>
+            <?php foreach ($created['keys'] as $k => $meta): ?>
+            <div class="k"><?= pfEsc(ucfirst($meta['mode'])) ?> key</div><div><code><?= pfEsc($k) ?></code></div>
+            <?php endforeach; ?>
+        </div>
+        <p class="sub" style="margin-bottom:0;">Starts in test mode. Turn on live payments, limits, and recurring in that site's Settings. Keys are always available on the site dashboard to users with the "API keys" permission.</p>
+    </div>
+    <?php endif; ?>
 
     <div class="stats">
         <div class="stat"><div class="label">Platforms</div><div class="value"><?= count($rows) ?></div></div>
@@ -236,53 +176,131 @@ usort($rows, fn($a, $b) => $b['stats']['volume'] <=> $a['stats']['volume']);
     </div>
 
     <div class="grid">
-    <?php foreach ($rows as $row): $p = $row['platform']; $s = $row['stats']; ?>
+    <?php foreach ($rows as $row): $p = $row['platform']; $s = $row['stats']; $hosted = ($p['type'] ?? '') === 'hosted'; $set = $hosted ? siteSettings($p) : []; ?>
         <div class="pf">
-            <h3><?= pfEsc($p['name'] ?? $p['id']) ?></h3>
-            <div class="url"><?php if (!empty($p['url'])): ?><a href="<?= pfEsc($p['url']) ?>" target="_blank" rel="noopener"><?= pfEsc($p['url']) ?></a><?php else: ?>&nbsp;<?php endif; ?></div>
+            <h3><?= pfEsc($p['name'] ?? $p['id']) ?>
+                <?php if ($hosted): ?>
+                    <?= $set['active'] ? ($set['liveEnabled'] ? '<span class="pill on">live</span>' : '<span class="pill test">test mode</span>') : '<span class="pill off">suspended</span>' ?>
+                <?php endif; ?>
+            </h3>
+            <div style="font-size:12px; margin-bottom:12px;"><?php if (!empty($p['url'])): ?><a href="<?= pfEsc($p['url']) ?>"><?= pfEsc($p['url']) ?></a><?php endif; ?></div>
             <div class="kv">
                 <div class="k">Processed</div><div class="v">$<?= number_format($s['volume'], 2) ?></div>
                 <div class="k">This month</div><div class="v">$<?= number_format($s['monthVolume'], 2) ?> (<?= $s['monthCount'] ?>)</div>
-                <div class="k">Transactions</div><div class="v"><?= number_format($s['transactions']) ?></div>
                 <div class="k">Approved / declined / refunded</div><div class="v"><?= $s['approved'] ?> / <?= $s['declined'] ?> / <?= $s['refunded'] ?></div>
-                <div class="k">Active subscriptions</div><div class="v"><?= number_format($s['activeSubs']) ?></div>
-                <div class="k">Recurring per cycle</div><div class="v">$<?= number_format($s['recurringPerCycle'], 2) ?></div>
+                <div class="k">Active subscriptions</div><div class="v"><?= number_format($s['activeSubs']) ?> · $<?= number_format($s['recurringPerCycle'], 2) ?>/cycle</div>
                 <div class="k">Customers</div><div class="v"><?= number_format($s['customers']) ?></div>
+                <?php if ($s['testCount']): ?><div class="k">Test transactions</div><div class="v"><?= number_format($s['testCount']) ?></div><?php endif; ?>
                 <div class="k">Last activity</div>
-                <div class="v<?= $s['lastActivity'] && $s['lastActivity'] < strtotime('-14 days') ? ' idle' : '' ?>">
-                    <?= $s['lastActivity'] ? pfEsc(date('M j, Y', $s['lastActivity'])) : '—' ?>
-                </div>
+                <div class="v<?= $s['lastActivity'] && $s['lastActivity'] < strtotime('-14 days') ? ' idle' : '' ?>"><?= $s['lastActivity'] ? pfEsc(date('M j, Y', $s['lastActivity'])) : '—' ?></div>
             </div>
             <div class="meta">
-                <?= pfEsc($p['notes'] ?? '') ?><br>
-                records: <?= pfEsc($p['transactionsDoc'] ?? '—') ?><?= !empty($p['subscriptionsDoc']) ? ', ' . pfEsc($p['subscriptionsDoc']) : '' ?>
-                <form method="post" action="/platforms/?action=remove" style="margin-top:8px;" onsubmit="return confirm('Remove <?= pfEsc($p['name'] ?? $p['id']) ?> from this list? Its payment records are not deleted.');">
-                    <input type="hidden" name="id" value="<?= pfEsc($p['id'] ?? '') ?>">
-                    <button type="submit" class="link">Remove from list</button>
-                </form>
+                <?= pfEsc($p['notes'] ?? '') ?>
+                <?php if ($hosted): ?><div style="margin-top:6px;">API: <code><?= pfEsc($p['apiUrl']) ?></code></div><?php endif; ?>
+                <div style="margin-top:10px; display:flex; gap:10px; align-items:center;">
+                    <?php if ($hosted): ?><a class="btn light" href="<?= pfEsc($p['url']) ?>">Open dashboard &amp; settings</a><?php endif; ?>
+                    <?php if ($isOwner): ?>
+                    <form method="post" action="/platforms/?action=remove" onsubmit="return confirm('Remove <?= pfEsc($p['name'] ?? $p['id']) ?> from this list? Its payment records are kept.');">
+                        <?= pfCsrfField() ?><input type="hidden" name="id" value="<?= pfEsc($p['id'] ?? '') ?>">
+                        <button type="submit" class="link">Remove from list</button>
+                    </form>
+                    <?php endif; ?>
+                </div>
             </div>
         </div>
     <?php endforeach; ?>
     </div>
 
-    <div class="card" style="margin-top:22px;">
-        <h2 style="font-size:16px; margin:0 0 14px;">Add a platform</h2>
-        <form method="post" action="/platforms/?action=add">
+    <?php if ($isOwner): ?>
+    <div class="card">
+        <h2>Add new site</h2>
+        <p class="sub" style="margin-top:0;">Creates a new URL, its own payments API, API keys (test + live), its own records, and a dashboard with settings.</p>
+        <form method="post" action="/platforms/?action=create-site">
+            <?= pfCsrfField() ?>
             <div class="two">
-                <div><label>Name</label><input name="name" placeholder="NewSite" required></div>
-                <div><label>URL</label><input name="url" placeholder="https://newsite.example"></div>
+                <div><label>Site name</label><input name="name" placeholder="My New Site" required maxlength="40"></div>
+                <div><label>Notes</label><input name="notes" placeholder="What this site sells"></div>
+            </div>
+            <p class="sub" style="margin-top:-4px;">URL will be <code><?= pfEsc(PF_BASE_URL) ?>/p/<i>site-name</i>/</code></p>
+            <button type="submit">Create site</button>
+        </form>
+    </div>
+
+    <div class="card" id="users">
+        <h2>Users &amp; permissions</h2>
+        <div class="scroll"><table>
+            <tr><th>User</th><th>Role</th><th>Sites</th><th>Permissions</th><th>Status</th><th></th></tr>
+            <?php foreach ($users as $u): $owner = pfIsOwner($u); ?>
+            <tr>
+                <td><b><?= pfEsc($u['username']) ?></b></td>
+                <td><?= pfEsc($u['role'] ?? 'member') ?></td>
+                <td><?= $owner || in_array('*', $u['sites'] ?? [], true) ? 'All sites' : pfEsc(implode(', ', $u['sites'] ?? []) ?: 'None') ?></td>
+                <td><?= $owner ? 'Everything' : pfEsc(implode(', ', array_map(fn($p) => PF_PERMISSIONS[$p] ?? $p, $u['perms'] ?? []))) ?></td>
+                <td><?= !empty($u['active']) ? '<span class="pill on">active</span>' : '<span class="pill off">disabled</span>' ?></td>
+                <td style="white-space:nowrap;">
+                    <a href="/platforms/?user=<?= urlencode($u['username']) ?>#user-form" style="font-size:12px;">Edit</a>
+                    <?php if (!$owner): ?>
+                    <form method="post" action="/platforms/?action=delete-user" style="display:inline; margin-left:8px;" onsubmit="return confirm('Remove user <?= pfEsc($u['username']) ?>?');">
+                        <?= pfCsrfField() ?><input type="hidden" name="username" value="<?= pfEsc($u['username']) ?>">
+                        <button type="submit" class="link">Remove</button>
+                    </form>
+                    <?php endif; ?>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+        </table></div>
+
+        <?php $eu = $editUser; $euOwner = $eu && pfIsOwner($eu); ?>
+        <h2 id="user-form" style="margin-top:22px;"><?= $eu ? 'Edit ' . pfEsc($eu['username']) : 'Add a user' ?></h2>
+        <form method="post" action="/platforms/?action=save-user">
+            <?= pfCsrfField() ?>
+            <div class="two">
+                <div><label>Username</label><input name="username" value="<?= pfEsc($eu['username'] ?? '') ?>" <?= $eu ? 'readonly' : '' ?> required></div>
+                <div><label><?= $eu ? 'New password (leave blank to keep)' : 'Password (min 8 characters)' ?></label><input type="password" name="password" autocomplete="new-password" <?= $eu ? '' : 'required' ?>></div>
+            </div>
+            <?php if (!$euOwner): ?>
+            <div class="two">
+                <div>
+                    <label>Sites they can access</label>
+                    <?php foreach ($allSites as $p): ?>
+                    <label class="check"><input type="checkbox" name="sites[]" value="<?= pfEsc($p['id']) ?>" <?= $eu && in_array($p['id'], $eu['sites'] ?? [], true) ? 'checked' : '' ?>> <?= pfEsc($p['name'] ?? $p['id']) ?></label>
+                    <?php endforeach; ?>
+                </div>
+                <div>
+                    <label>What they can do</label>
+                    <?php foreach (PF_PERMISSIONS as $perm => $labelText): ?>
+                    <label class="check"><input type="checkbox" name="perms[]" value="<?= pfEsc($perm) ?>" <?= $perm === 'view' || ($eu && in_array($perm, $eu['perms'] ?? [], true)) ? 'checked' : '' ?> <?= $perm === 'view' ? 'disabled' : '' ?>> <?= pfEsc($labelText) ?></label>
+                    <?php endforeach; ?>
+                    <label class="check" style="margin-top:12px;"><input type="checkbox" name="active" value="1" <?= !$eu || !empty($eu['active']) ? 'checked' : '' ?>> Account active</label>
+                </div>
+            </div>
+            <?php else: ?>
+            <p class="sub">Owner account — always has access to every site and permission.</p>
+            <?php endif; ?>
+            <button type="submit"><?= $eu ? 'Save changes' : 'Add user' ?></button>
+            <?php if ($eu): ?> <a href="/platforms/#users" style="font-size:13px; margin-left:8px;">Cancel</a><?php endif; ?>
+        </form>
+        <p class="sub" style="margin-bottom:0;">Users sign in with the same username and password here and on each site dashboard they have access to. Permissions only apply to sites built here; for Autopay and CreditGod they only control who sees the usage numbers.</p>
+    </div>
+
+    <div class="card">
+        <h2>Track an existing platform</h2>
+        <p class="sub" style="margin-top:0;">For a site that already keeps its own records on this server (like Autopay and CreditGod).</p>
+        <form method="post" action="/platforms/?action=track">
+            <?= pfCsrfField() ?>
+            <div class="two">
+                <div><label>Name</label><input name="name" required></div>
+                <div><label>URL</label><input name="url" placeholder="https://..."></div>
             </div>
             <div class="two">
                 <div><label>Transactions record</label><input name="transactionsDoc" placeholder="newsite_transactions.json"></div>
                 <div><label>Subscriptions record (optional)</label><input name="subscriptionsDoc" placeholder="newsite_autopay.json"></div>
             </div>
-            <label>Notes</label><input name="notes" placeholder="What this platform does">
-            <button type="submit">Add platform</button>
+            <label>Notes</label><input name="notes">
+            <button type="submit" class="light">Track platform</button>
         </form>
-        <p style="font-size:12px; color:#6b7280; margin-bottom:0;">
-            Usage is read live from the record names you enter — each platform keeps its own documents, so nothing mixes between sites.
-        </p>
     </div>
+    <?php endif; ?>
 <?php endif; ?>
 </div>
 </body>

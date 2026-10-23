@@ -225,7 +225,7 @@ switch ($endpoint) {
         if (empty($settings['allowRefunds'])) siteFail('Refunds through the API are disabled for this site', 403);
         $txnId = siteInput($input, 'transaction_id', 'id');
         if (!$txnId) siteFail('transaction_id is required');
-        $r = siteRefund($site, $txnId, round(floatval($input['amount'] ?? 0), 2), 'api');
+        $r = siteRefund($site, $txnId, round(floatval($input['amount'] ?? 0), 2), 'api', $isTestMode);
         if (!$r['ok']) siteFail($r['error'], $r['status']);
         echo json_encode(['success' => true, 'transaction_id' => $txnId, 'refund_amount' => $r['amount'], 'status' => 'refunded']);
         break;

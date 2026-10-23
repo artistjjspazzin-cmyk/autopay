@@ -292,12 +292,20 @@ switch ($endpoint) {
         if (($all[$index]['status'] ?? '') !== 'approved') cgFail('Can only refund approved transactions');
         if ($refundAmount <= 0) $refundAmount = floatval($all[$index]['amount']);
 
-        $token = cgGatewayToken();
-        if (!$token) cgFail('Payment gateway not connected', 503);
+        $txnIsTest = !empty($all[$index]['testMode']);
+        if ($txnIsTest !== $isTestMode) {
+            cgFail($txnIsTest ? 'This is a test transaction; refund it with your test key' : 'This is a live transaction; refund it with your live key');
+        }
 
-        $refundResult = cgGatewayRequest('POST', '/v2/shop/' . CG_SHOP_ID . '/sale/' . $txnId . '/refund', ['amount' => (int)round($refundAmount * 100)], $token);
-        if ($refundResult['code'] < 200 || $refundResult['code'] >= 300) {
-            cgFail($refundResult['body']['message'] ?? ($refundResult['body']['error'] ?? 'Refund failed'));
+        if (!$txnIsTest) {
+            if (!cgIsGatewaySaleId($txnId)) cgFail('This transaction has no processor sale ID, so it cannot be refunded through the API', 409);
+            $token = cgGatewayToken();
+            if (!$token) cgFail('Payment gateway not connected', 503);
+
+            $refundResult = cgGatewayRequest('POST', '/v2/shop/' . CG_SHOP_ID . '/sale/' . $txnId . '/refund', ['amount' => (int)round($refundAmount * 100)], $token);
+            if ($refundResult['code'] < 200 || $refundResult['code'] >= 300) {
+                cgFail($refundResult['body']['message'] ?? ($refundResult['body']['error'] ?? 'Refund failed'));
+            }
         }
 
         storageMutateDocument(CG_TRANSACTIONS, [], function ($txns) use ($txnId, $refundAmount) {

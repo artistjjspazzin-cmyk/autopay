@@ -190,7 +190,7 @@ function siteFireWebhooks(array $site, string $event, array $payload): void {
  * Refunds an approved transaction. Test-mode transactions are refunded locally;
  * live transactions go through the gateway first.
  */
-function siteRefund(array $site, string $txnId, float $refundAmount, string $actor): array {
+function siteRefund(array $site, string $txnId, float $refundAmount, string $actor, ?bool $testKey = null): array {
     $txn = null;
     foreach (siteTransactions($site) as $t) {
         if (($t['id'] ?? '') === $txnId) { $txn = $t; break; }
@@ -199,7 +199,13 @@ function siteRefund(array $site, string $txnId, float $refundAmount, string $act
     if (($txn['status'] ?? '') !== 'approved') return ['ok' => false, 'error' => 'Can only refund approved transactions', 'status' => 400];
     if ($refundAmount <= 0) $refundAmount = floatval($txn['amount'] ?? 0);
 
-    if (empty($txn['testMode'])) {
+    $txnIsTest = !empty($txn['testMode']);
+    if ($testKey !== null && $testKey !== $txnIsTest) {
+        return ['ok' => false, 'error' => $txnIsTest ? 'This is a test transaction; refund it with your test key' : 'This is a live transaction; refund it with your live key', 'status' => 400];
+    }
+
+    if (!$txnIsTest) {
+        if (!cgIsGatewaySaleId($txnId)) return ['ok' => false, 'error' => 'This transaction has no processor sale ID, so it cannot be refunded automatically', 'status' => 409];
         $token = cgGatewayToken();
         if (!$token) return ['ok' => false, 'error' => 'Payment gateway not connected', 'status' => 503];
         $res = cgGatewayRequest('POST', '/v2/shop/' . CG_SHOP_ID . '/sale/' . $txnId . '/refund', ['amount' => (int)round($refundAmount * 100)], $token);

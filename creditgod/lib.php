@@ -161,6 +161,10 @@ function cgGatewayRequest(string $method, string $endpoint, ?array $data = null,
     ];
 }
 
+function cgIsGatewaySaleId(string $id): bool {
+    return (bool)preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $id);
+}
+
 function cgCharge(string $payToken, float $amount, string $token): array {
     $amountCents = (int)round($amount * 100);
     $itemId = sprintf('%08x-%04x-%04x-%04x-%012x', mt_rand(), mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand());

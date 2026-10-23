@@ -35,6 +35,8 @@ curl -X POST 'https://autopay.builtbyjj.dev/creditgod/api.php?endpoint=charge' \
 
 In test mode a card ending in `0002` simulates a decline; anything else is approved.
 
+Refunds: send the `transaction_id` returned by `charge`, using the same kind of key that made the charge. Test transactions (`cg_test_...`) are refunded locally with the test key and never reach the processor; live transactions are refunded at the processor with the live key.
+
 ## Recurring charges
 
 `cron_creditgod.php` charges subscriptions whose `nextCharge` is due:
